@@ -17,6 +17,8 @@ class Central:
         self.joint_velocities = []
         self.jointPub = 0
         self.stiffness = False  
+        self.head_touch = False
+        self.r_arm_touch = False
 
         pass
 
@@ -43,6 +45,20 @@ class Central:
     def touch_cb(self,data):
         rospy.loginfo("touch button: "+str(data.button)+" state: "+str(data.state))
 
+        if data.button == 2 and data.state == 1 and not self.head_touch:
+            self.head_touch = True
+            print("*********")
+            print("starting repetitive left arm motion routine")
+
+        else:
+            if data.button == 2 and data.state == 1 and self.head_touch:
+                self.head_touch = False
+                print("stopping repetitive left arm motion routine")
+                print("*********")
+
+        #if data.button == 3 and not self.r_arm_touch:
+            #self.head_touch = True
+
     def image_cb(self,data):
         bridge_instance = CvBridge()
         try:
@@ -65,15 +81,52 @@ class Central:
         except rospy.ServiceException, e:
             rospy.logerr(e)
 
-    def set_joint_angles(self,head_angle):
+    def set_joint_angles(self,head_angle,joint_name):
 
         joint_angles_to_set = JointAnglesWithSpeed()
-        joint_angles_to_set.joint_names.append("RShoulderPitch") # each joint has a specific name, look into the joint_state topic or google
+        joint_angles_to_set.joint_names.append(joint_name) # each joint has a specific name, look into the joint_state topic or google
         joint_angles_to_set.joint_angles.append(head_angle) # the joint values have to be in the same order as the names!!
         joint_angles_to_set.relative = False # if true you can increment positions
         joint_angles_to_set.speed = 0.1 # keep this low if you can
         self.jointPub.publish(joint_angles_to_set)
         
+    def left_arm_home(self):
+
+        self.set_stiffness(True) 
+        
+        self.set_joint_angles(1.8, "LShoulderPitch")
+        self.set_joint_angles(0.4, "LShoulderRoll")
+
+        self.set_joint_angles(-0.4, "LElbowYaw")
+        self.set_joint_angles(-0.4, "LElbowRoll")
+
+        rospy.sleep(3.0)
+
+        self.set_stiffness(False) # always check that your robot is in a stable position before disabling the stiffness!!
+
+
+    def left_arm_repeat_move(self):
+
+        while self.head_touch:
+            print("iterating repetitive arm motion")
+
+            #self.left_arm_home()
+            
+            self.set_stiffness(True)
+            
+            self.set_joint_angles(0.35, "LShoulderPitch")
+            self.set_joint_angles(1.05, "LShoulderRoll")
+
+            self.set_joint_angles(-1.4, "LElbowYaw")
+            self.set_joint_angles(-1.4, "LElbowRoll")
+
+            rospy.sleep(2.0)
+
+            self.set_stiffness(False)
+
+            self.left_arm_home()
+
+        # self.left_arm_home()
 
 
     def central_execute(self):
@@ -89,18 +142,25 @@ class Central:
 
 
         # test sequence to demonstrate setting joint angles
-        self.set_stiffness(True) # don't let the robot stay enabled for too long, the motors will overheat!! (don't go for lunch or something)
-        rospy.sleep(1.0)
-        self.set_joint_angles(0.5)
-        rospy.sleep(3.0)
-        self.set_joint_angles(0.0)
-        rospy.sleep(3.0)
-        self.set_stiffness(False) # always check that your robot is in a stable position before disabling the stiffness!!
+        # self.set_stiffness(True) # don't let the robot stay enabled for too long, the motors will overheat!! (don't go for lunch or something)
+        # rospy.sleep(1.0)
+        # self.set_joint_angles(0.5, "RShoulderPitch")
+        # rospy.sleep(3.0)
+        # self.set_joint_angles(0.0, "RShoulderPitch")
+        # rospy.sleep(3.0)
+        # self.set_stiffness(False) # always check that your robot is in a stable position before disabling the stiffness!!
 
         rate = rospy.Rate(10) # sets the sleep time to 10ms
 
         while not rospy.is_shutdown():
             self.set_stiffness(self.stiffness)
+
+            if self.head_touch:
+                self.left_arm_repeat_move()
+
+        if data.button == 3 and not self.r_arm_touch:
+            
+            #self.left_arm_repeat_move()
             rate.sleep()
 
     # rospy.spin() just blocks the code from exiting, if you need to do any periodic tasks use the above loop
