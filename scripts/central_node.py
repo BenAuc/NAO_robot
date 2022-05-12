@@ -6,6 +6,7 @@ from naoqi_bridge_msgs.msg import JointAnglesWithSpeed,Bumper,HeadTouch
 from sensor_msgs.msg import Image,JointState
 from cv_bridge import CvBridge, CvBridgeError
 import cv2
+import numpy as np
 
 class Central:
 
@@ -19,6 +20,10 @@ class Central:
         self.stiffness = False  
         self.head_touch = False
         self.r_arm_touch = False
+
+        # define range of blue color in HSV
+        self.lower_red = np.array([160,50,50])
+        self.upper_red = np.array([180,255,255])
 
         pass
 
@@ -66,8 +71,60 @@ class Central:
         except CvBridgeError as e:
             rospy.logerr(e)
         
+        #print('original image disp')
         cv2.imshow("image window",cv_image)
+        #print('running blob detec')
+        self.cv2_blob_detection(cv_image)
         cv2.waitKey(3) # a small wait time is needed for the image to be displayed correctly
+
+    def cv2_blob_detection(self,image):
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv, self.lower_red, self.upper_red)
+        kernel = np.ones((5,5),np.uint8)
+        mask_dilation = cv2.dilate(mask, kernel, iterations=4)
+        mask_final = cv2.erode(mask_dilation, kernel, iterations=1)
+        res = cv2.bitwise_and(image,image, mask= mask_final)
+        cv2.imshow('mask',mask_final)
+        cv2.imshow('res',res)
+
+        # Parameter def
+        params = cv2.SimpleBlobDetector_Params()
+        params.filterByColor = 1
+        params.blobColor = 255
+        params.minArea = 200
+
+
+        detector = cv2.SimpleBlobDetector_create(params)
+        keypoints = detector.detect(mask_final)
+    
+
+        #draw 
+        im_with_keypoints = cv2.drawKeypoints(mask_final, keypoints, np.array([]), (0,0,255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        cv2.imshow("Keypoints", im_with_keypoints)
+
+        # # Find contours:
+        # im, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
+        # # Draw contours:
+        # cv2.drawContours(image, contours, 0, (0, 255, 0), 2)
+
+        # # Calculate image moments of the detected contour
+        # M = cv2.moments(contours[0])
+
+        # # Print center (debugging):
+        # try:
+        #     print("center X : '{}'".format(int(M['m10'] / M['m00'])))
+        #     print("center Y : '{}'".format(int(M['m01'] / M['m00'])))
+        #     # Draw a circle based centered at centroid coordinates
+        #     cv2.circle(image, (int(M['m10'] / M['m00']), int(M['m01'] / M['m00'])), 5, (0, 255, 0), -1)
+
+        #     # Show image:
+        #     cv2.imshow("outline contour & centroid", image)
+
+        #except ZeroDivisionError:
+        #    pass
+
+
 
     # sets the stiffness for all joints. can be refined to only toggle single joints, set values between [0,1] etc
     def set_stiffness(self,value):
@@ -154,14 +211,15 @@ class Central:
 
         while not rospy.is_shutdown():
             self.set_stiffness(self.stiffness)
+            rate.sleep()
 
-            if self.head_touch:
-                self.left_arm_repeat_move()
+            #if self.head_touch:
+                #self.left_arm_repeat_move()
 
-        if data.button == 3 and not self.r_arm_touch:
+        #if data.button == 3 and not self.r_arm_touch:
             
             #self.left_arm_repeat_move()
-            rate.sleep()
+            
 
     # rospy.spin() just blocks the code from exiting, if you need to do any periodic tasks use the above loop
     # each Subscriber is handled in its own thread
