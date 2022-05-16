@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import rospy
 from std_msgs.msg import String
+from geometry_msgs.msg import Pose, Point, Quaternion
 from std_srvs.srv import Empty
 from naoqi_bridge_msgs.msg import JointAnglesWithSpeed,Bumper,HeadTouch
 from sensor_msgs.msg import Image,JointState
@@ -18,12 +19,14 @@ class Central:
         self.joint_velocities = []
         self.jointPub = 0
         self.stiffness = False  
-        self.head_touch = False
+        self.do_repetitions_left = False
+        self.do_repetitions_right = False
+        self.going_home = False
         self.r_arm_touch = False
 
         # define range of blue color in HSV
-        self.lower_red = np.array([160,50,50])
-        self.upper_red = np.array([180,255,255])
+        self.lower_red = np.array([161,155,84])
+        self.upper_red = np.array([179,255,255])
 
         pass
 
@@ -50,19 +53,35 @@ class Central:
     def touch_cb(self,data):
         rospy.loginfo("touch button: "+str(data.button)+" state: "+str(data.state))
 
-        if data.button == 2 and data.state == 1 and not self.head_touch:
-            self.head_touch = True
+        if data.button == 1 and data.state == 1:
+            self.going_home = True
+            self.do_repetitions_left = False
+            self.do_repetitions_right = False
+            print("*********")
+            print("arms going home")
+
+        #if data.button == 3 and not self.r_arm_touch:
+            #self.do_repetitions_left = True
+
+        if data.button == 2 and data.state == 1 and not self.do_repetitions_left:
+            self.do_repetitions_left = True
+            self.going_home = False
             print("*********")
             print("starting repetitive left arm motion routine")
 
-        else:
-            if data.button == 2 and data.state == 1 and self.head_touch:
-                self.head_touch = False
-                print("stopping repetitive left arm motion routine")
-                print("*********")
+        if data.button == 3 and data.state == 1 and self.do_repetitions_left: 
+            self.do_repetitions_right = True
+            print("*********")
+            print("starting repetitive right arm motion routine")
+
+        # else:
+        #     if data.button == 2 and data.state == 1 and self.do_repetitions_left:
+        #         self.do_repetitions_left = False
+        #         print("stopping repetitive left arm motion routine")
+        #         print("*********")
 
         #if data.button == 3 and not self.r_arm_touch:
-            #self.head_touch = True
+            #self.do_repetitions_left = True
 
     def image_cb(self,data):
         bridge_instance = CvBridge()
@@ -74,56 +93,82 @@ class Central:
         #print('original image disp')
         cv2.imshow("image window",cv_image)
         #print('running blob detec')
-        self.cv2_blob_detection(cv_image)
+        try:
+            self.cv2_blob_detection(cv_image)
+
+        except:
+            pass
+
         cv2.waitKey(3) # a small wait time is needed for the image to be displayed correctly
 
     def cv2_blob_detection(self,image):
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         mask = cv2.inRange(hsv, self.lower_red, self.upper_red)
         kernel = np.ones((5,5),np.uint8)
-        mask_dilation = cv2.dilate(mask, kernel, iterations=4)
+        mask_dilation = cv2.dilate(mask, kernel, iterations=2)
         mask_final = cv2.erode(mask_dilation, kernel, iterations=1)
+        kernel = np.ones((6,6),np.float32)/25
+        mask_final = cv2.filter2D(mask_final,-1,kernel)
+
         res = cv2.bitwise_and(image,image, mask= mask_final)
         cv2.imshow('mask',mask_final)
-        cv2.imshow('res',res)
+        cv2.imshow('image seen through mask',res)
 
         # Parameter def
         params = cv2.SimpleBlobDetector_Params()
-        params.filterByColor = 1
-        params.blobColor = 255
-        params.minArea = 200
+        params.filterByArea  = True
+        params.minArea = 1000
+        params.maxArea = 200000
+        params.filterByInertia = True
+        params.minInertiaRatio = 0.0
+        params.maxInertiaRatio  = 0.8
 
+        #params.filterByConvexity = True
+        #params.minConvexity = 0.09
+        #params.maxConvexity = 0.99
 
+        # Applying the param
         detector = cv2.SimpleBlobDetector_create(params)
-        keypoints = detector.detect(mask_final)
-    
+        keypoints = detector.detect(~mask_final)
 
         #draw 
-        im_with_keypoints = cv2.drawKeypoints(mask_final, keypoints, np.array([]), (0,0,255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        im_with_keypoints = cv2.drawKeypoints(~mask_final, keypoints, np.array([]), (0,0,255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
         cv2.imshow("Keypoints", im_with_keypoints)
 
-        # # Find contours:
-        # im, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        ## Find outer contours 
+        im, contours, hierarchy = cv2.findContours(mask_final, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
 
-        # # Draw contours:
-        # cv2.drawContours(image, contours, 0, (0, 255, 0), 2)
+        maxContour = 0
+        for contour in contours:
+            contourSize = cv2.contourArea(contour)
+            if contourSize > maxContour:
+                maxContour = contourSize
+                maxContourData = contour
+               
+        ## Draw
+        cv2.drawContours(image, maxContourData, -1, (0,255,0), 2, lineType = cv2.LINE_4)
+        cv2.imshow('image with countours',image)
 
-        # # Calculate image moments of the detected contour
-        # M = cv2.moments(contours[0])
+        # Calculate image moments of the detected contour
+        M = cv2.moments(maxContourData)
 
-        # # Print center (debugging):
-        # try:
-        #     print("center X : '{}'".format(int(M['m10'] / M['m00'])))
-        #     print("center Y : '{}'".format(int(M['m01'] / M['m00'])))
-        #     # Draw a circle based centered at centroid coordinates
-        #     cv2.circle(image, (int(M['m10'] / M['m00']), int(M['m01'] / M['m00'])), 5, (0, 255, 0), -1)
+        try:
+        # Draw a circle based centered at centroid coordinates
+            cv2.circle(image, (int(M['m10'] / M['m00']), int(M['m01'] / M['m00'])), 5, (0, 0, 0), -1)
 
-        #     # Show image:
-        #     cv2.imshow("outline contour & centroid", image)
+        # Show image:
+            cv2.imshow("outline contour & centroid", image)
 
-        #except ZeroDivisionError:
-        #    pass
+        except ZeroDivisionError:
+            pass
 
+        blob_coordinates_msg = Point(int(M['m10'] / M['m00']), int(M['m01'] / M['m00']), 0)
+        # blob_coordinates_msg.x = int(M['m10'] / M['m00'])
+        # blob_coordinates_msg.y = int(M['m01'] / M['m00'])
+        # blob_coordinates_msg.z = 0
+
+        self.redBlobPub.publish(blob_coordinates_msg)
+        
 
 
     # sets the stiffness for all joints. can be refined to only toggle single joints, set values between [0,1] etc
@@ -159,12 +204,33 @@ class Central:
 
         rospy.sleep(3.0)
 
-        self.set_stiffness(False) # always check that your robot is in a stable position before disabling the stiffness!!
+        #self.set_stiffness(False) # always check that your robot is in a stable position before disabling the stiffness!!
 
 
-    def left_arm_repeat_move(self):
+    def both_arms_home(self):
 
-        while self.head_touch:
+        self.set_stiffness(True) 
+        
+        self.set_joint_angles(1.8, "RShoulderPitch")
+        self.set_joint_angles(-0.4, "RShoulderRoll")
+
+        self.set_joint_angles(0.4, "RElbowYaw")
+        self.set_joint_angles(0.4, "RElbowRoll")
+
+        self.set_joint_angles(1.8, "LShoulderPitch")
+        self.set_joint_angles(0.4, "LShoulderRoll")
+
+        self.set_joint_angles(-0.4, "LElbowYaw")
+        self.set_joint_angles(-0.4, "LElbowRoll")
+
+        rospy.sleep(3.0)
+
+        #self.set_stiffness(False) # always check that your robot is in a stable position before disabling the stiffness!!
+
+
+    def repeat_move(self):
+
+        while self.do_repetitions_left:
             print("iterating repetitive arm motion")
 
             #self.left_arm_home()
@@ -174,14 +240,27 @@ class Central:
             self.set_joint_angles(0.35, "LShoulderPitch")
             self.set_joint_angles(1.05, "LShoulderRoll")
 
+            if self.do_repetitions_right:
+
+                self.set_joint_angles(-0.35, "RShoulderPitch")
+                self.set_joint_angles(-1.05, "RShoulderRoll")
+
             self.set_joint_angles(-1.4, "LElbowYaw")
             self.set_joint_angles(-1.4, "LElbowRoll")
 
+            if self.do_repetitions_right:
+
+                self.set_joint_angles(1.4, "RElbowYaw")
+                self.set_joint_angles(1.4, "RElbowRoll")
+
+            #if right_arm_mirror
+
             rospy.sleep(2.0)
 
-            self.set_stiffness(False)
-
-            self.left_arm_home()
+            if self.do_repetitions_right:
+                self.both_arms_home()
+            else:
+                self.left_arm_home()
 
         # self.left_arm_home()
 
@@ -196,6 +275,7 @@ class Central:
         rospy.Subscriber("tactile_touch",HeadTouch,self.touch_cb)
         rospy.Subscriber("/nao_robot/camera/top/camera/image_raw",Image,self.image_cb)
         self.jointPub = rospy.Publisher("joint_angles",JointAnglesWithSpeed,queue_size=10)
+        self.redBlobPub = rospy.Publisher("red_blob_coordinates", Point, queue_size=1)
 
 
         # test sequence to demonstrate setting joint angles
@@ -211,17 +291,21 @@ class Central:
 
         while not rospy.is_shutdown():
             self.set_stiffness(self.stiffness)
-            rate.sleep()
 
-            #if self.head_touch:
-                #self.left_arm_repeat_move()
+            if self.do_repetitions_left:
+                self.repeat_move()
 
-        #if data.button == 3 and not self.r_arm_touch:
+            if self.going_home: 
+                self.both_arms_home()
+                self.going_home = False
+
+        # if data.button == 3 and not self.r_arm_touch:
             
-            #self.left_arm_repeat_move()
+        #     self.left_arm_repeat_move()
+        #     rate.sleep()
             
 
-    # rospy.spin() just blocks the code from exiting, if you need to do any periodic tasks use the above loop
+    #rospy.spin() just blocks the code from exiting, if you need to do any periodic tasks use the above loop
     # each Subscriber is handled in its own thread
     #rospy.spin()
 
