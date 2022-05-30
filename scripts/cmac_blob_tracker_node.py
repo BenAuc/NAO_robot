@@ -9,6 +9,7 @@ from cv_bridge import CvBridge, CvBridgeError
 import cv2
 import numpy as np
 import copy
+from matplotlib import pyplot as plt
 
 class Central:
 
@@ -31,9 +32,11 @@ class Central:
         self.cmac_nb_outputs = 2
         self.cmac_res = 50 # resolution
         self.cmac_field_size = 3 # receptive field size: set to 3 or 5 depending on the task, see tutorial description
-        self.cmac_nb_neurons = 5 # to be defined, max field_size x field_size
+        self.cmac_nb_neurons = self.cmac_field_size # to be defined, max field_size x field_size
         # receptive field: see additional material 3 on moodle. Here 5 neurons with coordinates in shape of a cross.
-        self.cmac_rf = [[0, 1], [1, 0], [1, 1], [1, 2], [2, 1]] 
+        #self.cmac_rf = [[0, 3], [1, 0], [2, 2], [3, 4], [4, 1]] 
+        self.cmac_rf = [[0, 0], [1, 1], [2, 2]] 
+        self.cmac_weight_table = np.random.uniform(-0.2, 0.2, (self.cmac_res, self.cmac_res, self.cmac_nb_outputs)) # Not all entries correspond to a neuron, depends on self.cmac_nb_neurons
 
         # define camera resolution
         # pixels idx run from 0 to resolution - 1
@@ -222,50 +225,199 @@ class Central:
         #####
         # this method takes as input a python list 1x2 corresponding to (x,y) coordinates and normalizes it
         #####
-        print("input x coor :", coordinates[0])
-        print("input y coord:", coordinates[1])
+        # print("input x coor :", coordinates[0])
+        # print("input y coord:", coordinates[1])
         # print("max x :", self.cam_x_max)
         # print("max y :", self.cam_y_max)
         return [float(coordinates[0]) / self.cam_x_max, float(coordinates[1]) / self.cam_y_max]
 
 
-    def get_L2_neuron_position(self):
+    def get_L2_neuron_position(self, input_data):
         #####
         # this method returns the position of neurons in L2 activated by a given input
         #####
 
         position = []
+        neuron_pos = []
+        #neuron_pos.append(0) ##bias
+        displacement_list = []
+        quantized_ip_list = []
+        
+        # Perform quantization step (L1)
+        for i_channel in range(self.cmac_nb_inputs):
 
+            quantized_ip = int(self.input_norm(input_data)[i_channel] * self.cmac_res)
+
+            if quantized_ip >= self.cmac_res:
+                quantized_ip = self.cmac_res
+            quantized_ip_list.append(quantized_ip)
+
+        # L2
         for i_neuron in range(self.cmac_nb_neurons):
+            
+            for inputs in range(self.cmac_nb_inputs):
 
-            print("******************************")
-            print("neuron # :", i_neuron)
-            print("******************************")
-            neuron_coord = []
+                shift_amount  = (self.cmac_field_size - quantized_ip_list[inputs]) % self.cmac_field_size
+                local_coord = (shift_amount  + self.cmac_rf[i_neuron][inputs]) % self.cmac_field_size
+                coord = quantized_ip_list[inputs] + local_coord
+                
+                neuron_pos.append(coord)
 
-            for i_channel in range(self.cmac_nb_inputs):
+            #position.append(neuron_pos)
 
-                print("*******")
-                print("channel # :", i_channel)
+        #print('******')
+        #print(neuron_pos)
 
-                input_index = int(self.input_norm(self.blob_coordinates)[i_channel] * self.cmac_res)
-                print("shift idx :", input_index)
+        return neuron_pos
 
-                shift_amount = self.cmac_field_size - input_index % self.cmac_field_size
-                print("shift amount :", shift_amount)
+    def get_cmac_output(self, neuron_pos):
+        # Calculate the ouput of the CMAC after L3
+        # Inputs:
+        #   neuron_pos: list of indices of the neurons within the receptive field, computed in L2. Can be viewed as activtion address vector
+        # Outputs:
+        #   x: list of values, each corresponding to an output of the CMAC
 
-                print("neuron coordinates in rf:", self.cmac_rf[i_neuron][i_channel])
-                local_coord = (shift_amount + self.cmac_rf[i_neuron][i_channel]) % self.cmac_field_size
-                print("local coordinates :", local_coord)
+        # Initialize the outputs to 0
+        x = [0] * self.cmac_nb_outputs
 
-                coord = input_index + local_coord
+        # Loop through L3 neurons within the window (receptive field) selected in L2
+        for jk_neuron in range(self.cmac_nb_neurons):
+            # Loop through outputs
+            for i_output in range(self.cmac_nb_outputs):
+                row = neuron_pos[jk_neuron]
+                col = neuron_pos[self.cmac_nb_neurons + jk_neuron]
+                # Add weight from weight table
+                x[i_output] = x[i_output] +  self.cmac_weight_table[row, col, i_output]
 
-                neuron_coord.append(coord)
-                rospy.sleep(0.5)
+        # print('CMAC output/actuator input: ', x)
 
-            position.append(neuron_coord)
+        return x
 
-        return position
+    def train_cmac(self, cmac_weight_table, data, num_epochs):
+        # Train the CMAC
+        # Inputs:
+        #   cmac_weight_table: untrained weight table
+        #   data: training data
+        #   num_epochs: number of epochs
+        # Outputs:
+        #   new_cmac_weight_table: trained weight table
+        # Example call:
+        #   self.cmac_weight_table = self.train_cmac(self.cmac_weight_table, self.training_dataset[0:149,:], 10)
+
+        # Initialize variables
+        new_cmac_weight_table = np.zeros(cmac_weight_table.shape) # Trained weight table
+        alpha = 0.3 # Learning rate
+        inputs = data[:,0:] # Inputs
+        t = data[:,-2:] # Targets (ground truth)
+        MSE_sample = np.zeros((data.shape[0], num_epochs)) # MSE of each sample at every epoch
+        MSE = [0] * num_epochs # General MSE at every epoch
+
+        # Target training:
+        print('******')
+        print("Starting target training...")
+        
+        # Repeat num_epochs times
+        for epoch in range(num_epochs):
+            print("Epoch: " + str(epoch + 1) + "/" + str(num_epochs))
+            # Iterate through all data samples
+            print(len(data))
+            for d in range(len(data)):
+                # Forward pass
+                neuron_pos = self.get_L2_neuron_position(inputs[d, :])
+                x = self.get_cmac_output(neuron_pos)
+
+                # Compute MSE of data sample
+                MSE_sample[d, epoch] = np.square(np.subtract(t[d],x)).mean()
+
+                # Loop through L3 neurons within the window (receptive field) selected in L2
+                for jk_neuron in range(self.cmac_nb_neurons):
+                    # Loop through outputs
+                    for i_output in range(self.cmac_nb_outputs):
+                        row = neuron_pos[jk_neuron]
+                        col = neuron_pos[self.cmac_nb_neurons + jk_neuron]
+                        wijk = cmac_weight_table[row, col, i_output] # Weight to be updated
+                        increment = alpha * (t[d, i_output] - x[i_output]) # Increment to be added
+                        new_cmac_weight_table[row, col, i_output] = wijk + increment # New weight
+
+            # Update weights for this epoch
+            new_cmac_weight_table = cmac_weight_table
+
+            # Plot MSE of this epoch
+            MSE[epoch] = MSE_sample[:, epoch].mean()
+            # plt.plot(range(1, num_epochs+1), MSE[0:epoch])
+            # plt.xlabel("Epoch")
+            # plt.ylabel("MSE")
+            # plt.title("Mean-Squared Error, Epoch: " + str(epoch + 1))
+            # plt.show()
+            print("MSE: " + str(MSE[epoch]))
+
+        plt.plot(range(1, num_epochs+1), MSE)
+        plt.xlabel("Epoch")
+        plt.ylabel("MSE")
+        plt.title("Mean-Squared Error, Epoch: " + str(epoch + 1))
+        plt.show()
+
+        return new_cmac_weight_table
+
+
+
+
+
+
+    # def get_L2_neuron_position(self):
+    #     #####
+    #     # this method returns the position of neurons in L2 activated by a given input
+    #     #####
+
+    #     position = []
+
+    #     for i_neuron in range(self.cmac_nb_neurons):
+
+    #         print("******************************")
+    #         print("neuron # :", i_neuron)
+    #         print("******************************")
+    #         neuron_coord = []
+
+    #         for i_channel in range(self.cmac_nb_inputs):
+
+    #             print("*******")
+    #             print("channel # :", i_channel)
+                    
+    #             input_index_q = int(self.input_norm(self.blob_coordinates)[i_channel] * self.cmac_res)
+    #             print("shift idx :", input_index_q)
+
+    #             shift_amount_d = self.cmac_field_size - input_index_q % self.cmac_field_size
+    #             print("shift amount :", shift_amount_d)
+
+    #             print("neuron coordinates in rf:", self.cmac_rf[i_neuron][i_channel])
+    #             local_coord_p = (shift_amount_d + self.cmac_rf[i_neuron][i_channel]) % self.cmac_field_size
+    #             print("local coordinates :", local_coord_p)
+
+    #             coord = input_index_q + local_coord_p
+
+    #             neuron_coord.append(coord)
+    #             rospy.sleep(0.5)
+
+    #         position.append(neuron_coord)
+    #     print('******')
+    #     print(len(position))
+    #     print(position)
+
+
+
+    #         #for i in range(len(position)):
+    #          #   self.cmac_field_size
+
+    #     return position
+
+    def set_joint_angles(self,head_angle,joint_name):
+
+        joint_angles_to_set = JointAnglesWithSpeed()
+        joint_angles_to_set.joint_names.append(joint_name) # each joint has a specific name, look into the joint_state topic or google
+        joint_angles_to_set.joint_angles.append(head_angle) # the joint values have to be in the same order as the names!!
+        joint_angles_to_set.relative = False # if true you can increment positions
+        joint_angles_to_set.speed = 0.1 # keep this low if you can
+        self.jointPub.publish(joint_angles_to_set)
 
 
     def central_execute(self):
@@ -274,6 +426,8 @@ class Central:
         #####
 
         rospy.init_node('central_node',anonymous=True) #initilizes node, sets name
+
+        self.jointPub = rospy.Publisher("joint_angles",JointAnglesWithSpeed,queue_size=10) # Allow joint control
 
         # display training dataset
         print("training data set is :", self.training_dataset)
@@ -284,13 +438,23 @@ class Central:
         print("setting joints in stiff mode for tracking")
         print("setting joints in stiff mode")
 
+        # Train the CMAC network
+        num_data_samples = 150
+        num_epochs = 10
+        self.cmac_weight_table = self.train_cmac(self.cmac_weight_table, self.training_dataset[0:num_data_samples-1,:], num_epochs)
+
         while not rospy.is_shutdown():
             
-            self.set_stiffness_tracking()
+            # self.set_stiffness_tracking() # Only for gathering training data!
+            self.set_stiffness(True)
+
 
             if len(self.blob_coordinates) > 0:
 
-                position = self.get_L2_neuron_position()
+                neuron_pos = self.get_L2_neuron_position(self.blob_coordinates)
+                x = self.get_cmac_output(neuron_pos)
+                self.set_joint_angles(x[0], "LShoulderPitch")
+                self.set_joint_angles(x[1], "LShoulderRoll")
 
             rospy.sleep(1.0)
 
