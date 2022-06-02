@@ -28,9 +28,10 @@ class Central:
         self.upper_red = np.array([179,255,255])
 
         # define joint limits
-        self.l_shoulder_pitch_limits = [rospy.get_param("joint_limits/left_shoulder/pitch")]
-        self.l_shoulder_roll_limits = [rospy.get_param("joint_limits/left_shoulder/roll")]
-
+        self.l_shoulder_pitch_limits = rospy.get_param("joint_limits/left_shoulder/pitch")
+        self.l_shoulder_roll_limits = rospy.get_param("joint_limits/left_shoulder/roll")
+        self.joint_limit_safety_f = rospy.get_param("joint_limits/safety")[0]
+       
         # define cmac parameters
         self.cmac_nb_inputs = 2
         self.cmac_nb_outputs = 2
@@ -49,7 +50,8 @@ class Central:
         self.cam_x_max = 320 - 1
 
         # define training dataset
-        self.path_to_dataset = '/home/bio/bioinspired_ws/src/tutorial_4/data/training_data_today.npy'
+        # self.path_to_dataset = '/home/bio/bioinspired_ws/src/tutorial_4/data/training_data_today.npy'
+        self.path_to_dataset = '/home/bio/bioinspired_ws/src/tutorial_4/data/training_data_v1.npy'
         self.training_dataset = np.load(self.path_to_dataset)
         self.nb_training_datapoints = 75 # set to 75 or 150 depending on the task, see tutorial description
 
@@ -215,7 +217,7 @@ class Central:
         velocity = [0.1, 0.1, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10]
         
         # select which joints are to be stiffened up. Command 1.0 in this case.
-        effort =   [1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+        effort =   [0.9, 0.9, 0.0, 0.0, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9]
 
         # create JointState message
         stiffness_msg = JointState(Header(), joint_names, position, velocity, effort)
@@ -225,7 +227,7 @@ class Central:
         rospy.sleep(1.0)
 
     
-    def input_norm(self, coordinates):
+    def input_normalization(self, coordinates):
         #####
         # this method takes as input a python list 1x2 corresponding to (x,y) coordinates and normalizes it
         # Inputs:
@@ -257,7 +259,7 @@ class Central:
         for i_channel in range(self.cmac_nb_inputs):
 
             # quantize the input per the chosen resolution
-            quantized_ip = int(self.input_norm(input_data)[i_channel] * self.cmac_res)
+            quantized_ip = int(self.input_normalization(input_data)[i_channel] * self.cmac_res)
 
             # safety check to force the quantization to remain within boundaries
             if quantized_ip >= self.cmac_res:
@@ -268,6 +270,7 @@ class Central:
 
         # find coordinates of all activated L2 neurons
         for i_neuron in range(self.cmac_nb_neurons):
+            position = []
             
             # for all dimensions
             for inputs in range(self.cmac_nb_inputs):
@@ -282,8 +285,14 @@ class Central:
                 coord = quantized_ip_list[inputs] + local_coord
                 
                 # append to list
-                neuron_pos.append(coord) # why do we use a flat array for a set of (x,y) coordinates ? 
+                position.append(coord) # why do we use a flat array for a set of (x,y) coordinates ? 
                 # this can work but can also be misleading
+
+            # append to list
+            neuron_pos.append(position)
+
+        print("**************")
+        print("set of L2 neurons activated :", neuron_pos)
 
         return neuron_pos
 
@@ -304,11 +313,31 @@ class Central:
             # Loop through outputs
             for i_output in range(self.cmac_nb_outputs):
 
-                row = neuron_pos[jk_neuron] # isn`t there an error here and it should be "2 * jk_neuron" ? not sure I follow the data structure
-                col = neuron_pos[self.cmac_nb_neurons + jk_neuron] # isn`t there an error here and it should be "jk_neuron + 1" ?
+                # fetch index of weight in table
+                row = neuron_pos[jk_neuron][0]
+                col = neuron_pos[jk_neuron][1] 
 
                 # Add weight from weight table
                 x[i_output] = x[i_output] + self.cmac_weight_table[row, col, i_output]
+
+        # check whether joints are within their limit range and if not enforce it
+        # check left shoulder pitch
+        if x[0] > (1 - self.joint_limit_safety_f) * self.l_shoulder_pitch_limits[1]:
+            print("Joint state pitch mapped out of its limits. Correction applied.", (1 - self.joint_limit_safety_f) * self.l_shoulder_pitch_limits[1])
+            x[0] = (1 - self.joint_limit_safety_f) * self.l_shoulder_pitch_limits[1]
+
+        elif x[0] < (1 - self.joint_limit_safety_f) * self.l_shoulder_pitch_limits[0]:
+            print("Joint state pitch mapped out of its limits. Correction applied.", (1 - self.joint_limit_safety_f) * self.l_shoulder_pitch_limits[0])
+            x[0] = (1 - self.joint_limit_safety_f) * self.l_shoulder_pitch_limits[0]
+
+        # check left shoulder roll
+        if x[1] > (1 - self.joint_limit_safety_f) * self.l_shoulder_roll_limits[1]:
+            print("Joint state roll mapped out of its limits. Correction applied.", (1 - self.joint_limit_safety_f) * self.l_shoulder_roll_limits[1])
+            x[1] = (1 - self.joint_limit_safety_f) * self.l_shoulder_roll_limits[1]
+
+        elif x[1] < (1 - self.joint_limit_safety_f) * self.l_shoulder_roll_limits[0]:
+            print("Joint state roll mapped out of its limits. Correction applied.", (1 - self.joint_limit_safety_f) * self.l_shoulder_roll_limits[0])
+            x[1] = (1 - self.joint_limit_safety_f) * self.l_shoulder_roll_limits[0]
 
         return x
 
@@ -326,7 +355,7 @@ class Central:
 
         # Initialize variables
         new_cmac_weight_table = np.zeros(cmac_weight_table.shape) # Trained weight table
-        alpha = 0.3 # Learning rate
+        alpha = 0.05 # Learning rate
         inputs = data[:, 0:] # Inputs
         t = data[:,-2:] # Targets (ground truth)
         MSE_sample = np.zeros((data.shape[0], num_epochs)) # MSE of each sample at every epoch
@@ -343,8 +372,11 @@ class Central:
             # Iterate through all data samples
             for d in range(len(data)):
 
+                # normalize the inputs
+                inputs_normalized = self.input_normalization(inputs[d, :])
+
                 # Forward pass
-                neuron_pos = self.get_L2_neuron_position(inputs[d, :])
+                neuron_pos = self.get_L2_neuron_position(inputs_normalized)
                 x = self.get_cmac_output(neuron_pos)
 
                 # Compute MSE of data sample
@@ -355,10 +387,12 @@ class Central:
 
                     # Loop through outputs
                     for i_output in range(self.cmac_nb_outputs):
-                        row = neuron_pos[jk_neuron]
-                        col = neuron_pos[self.cmac_nb_neurons + jk_neuron]
+
+                        # fetch index of weight in table
+                        row = neuron_pos[jk_neuron][0]
+                        col = neuron_pos[jk_neuron][1] 
                         wijk = cmac_weight_table[row, col, i_output] # Weight to be updated
-                        increment = alpha * (t[d, i_output] - x[i_output]) # Increment to be added
+                        increment = alpha * (t[d, i_output] - x[i_output]) / self.cmac_nb_neurons # Increment to be added
                         new_cmac_weight_table[row, col, i_output] = wijk + increment # New weight
 
             # Update weights for this epoch
@@ -397,7 +431,7 @@ class Central:
     #             print("*******")
     #             print("channel # :", i_channel)
                     
-    #             input_index_q = int(self.input_norm(self.blob_coordinates)[i_channel] * self.cmac_res)
+    #             input_index_q = int(self.input_normalization(self.blob_coordinates)[i_channel] * self.cmac_res)
     #             print("shift idx :", input_index_q)
 
     #             shift_amount_d = self.cmac_field_size - input_index_q % self.cmac_field_size
@@ -443,9 +477,6 @@ class Central:
 
         self.jointPub = rospy.Publisher("joint_angles",JointAnglesWithSpeed,queue_size=10) # Allow joint control
 
-        # display training dataset
-        print("training data set is :", self.training_dataset)
-
         # set joint stiffness and ready for tracking task
         self.set_stiffness_tracking()
         print("*********")
@@ -466,7 +497,7 @@ class Central:
             if len(self.blob_coordinates) > 0:
 
                 # compute which L2 neurons are activated
-                neuron_pos = self.get_L2_neuron_position(self.blob_coordinates) # think we forgot to normalize the inputs here, see self.input_norm
+                neuron_pos = self.get_L2_neuron_position(self.blob_coordinates)
 
                 # compute the joint states
                 x = self.get_cmac_output(neuron_pos)
