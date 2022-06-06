@@ -204,33 +204,52 @@ class Central:
     
     def set_stiffness_data_acquisition(self):
         #####
-        # this method stiffens up all joints and dfs but the shoulder to get ready to acquire data points
+        # Stiffen up all joints and degrees of freedom but the shoulder pitch and roll
+        # Outputs:
+        #   Publication of JointState message on corresponding topic 
         #####
-
-        # COMMENT THESE LINES OUT TO GET EXPECTED BEHAVIOR
-        # sets the joint involved in the training data acquisition in a pre-defined pose 
-        #self.set_stiffness(self.stiffness)
-        #self.set_stiffness(True)
 
         joint_names = ["HeadYaw", "HeadPitch", "LShoulderPitch", "LShoulderRoll", "LElbowYaw", "LElbowRoll", "LWristYaw",
                 "LHand", "LHipYawPitch", "LHipRoll", "LHipPitch", "LKneePitch", "LAnklePitch", "LAnkleRoll", "RHipYawPitch",
                 "RHipRoll", "RHipPitch", "RKneePitch", "RAnklePitch", "RAnkleRoll", "RShoulderPitch", "RShoulderRoll",
                 "RElbowYaw", "RElbowRoll", "RWristYaw", "RHand"]
 
-        # position = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        # position = [0.0, 0.0, 0.0, 0.0, 0.0]
-        # velocity = [0.0, 0.0, 0.0, 0.0, 0.0]
-        # effort = [0.0, 0.0, 0.0, 0.0, 0.0]
-
-        position = [0.05058002471923828, -0.37126994132995605, 0.9433679580688477, 0.2039799690246582, -0.06600403785705566, -0.0367741584777832, -0.03992605209350586, 0.6187999844551086, -0.3481760025024414, -0.08432793617248535, -1.535889744758606, -0.09232791513204575, 0.9225810170173645, 0.029187917709350586, -0.3481760025024414, -0.06438612937927246, -1.535889744758606, -0.09232791513204575, 0.9226999878883362, 0.0, 0.9818019866943359, -0.29917192459106445, 0.8160459995269775, 0.3758718967437744, 1.3851600885391235, 0.3360000252723694]
+        position = [-0.08748006820678711, -0.1764519214630127, 0.7899680137634277, 0.08432793617248535, -0.0353238582611084, -0.9602420330047607, -0.1503739356994629, 0.25679999589920044, -0.49390602111816406, 0.1104898452758789, -1.2701101303100586, -0.09232791513204575, 0.9225810170173645, -8.26716423034668e-05, -0.49390602111816406, -0.20551395416259766, -1.4235939979553223, 0.12582993507385254, 0.9226999878883362, 0.0, 1.8055601119995117, -0.26695799827575684, 1.8683700561523438, 0.581428050994873, -0.5200679302215576, 0.30879998207092285]
         velocity = [0.1, 0.1, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10]
-        effort =   [1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+        effort =   [0.9, 0.9, 0.0, 0.0, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9]
 
-        # stiffness_msg = JointState(Header(), self.stiff_joint_set, position, velocity, effort)
         stiffness_msg = JointState(Header(), joint_names, position, velocity, effort)
 
         self.jointStiffnessPub.publish(stiffness_msg)
+
         rospy.sleep(1.0)
+
+
+    def set_joint_states_data_acquisition(self):
+        #####
+        # Set all joints in desired states prior to data acquisition
+        # Outputs:
+        #   Call to method that set the joint states 
+        #####
+
+        print("********")
+        print("setting joint states in desired configuration")
+
+        joint_names = ["HeadYaw", "HeadPitch", "LShoulderPitch", "LShoulderRoll", "LElbowYaw", "LElbowRoll", "LWristYaw",
+                "LHand", "LHipYawPitch", "LHipRoll", "LHipPitch", "LKneePitch", "LAnklePitch", "LAnkleRoll", "RHipYawPitch",
+                "RHipRoll", "RHipPitch", "RKneePitch", "RAnklePitch", "RAnkleRoll", "RShoulderPitch", "RShoulderRoll",
+                "RElbowYaw", "RElbowRoll", "RWristYaw", "RHand"]
+
+        position = [0.06, -0.22, 0.58, 0.24, -0.00, -0.91, -1.55, 0.26, -0.73, 0.18, -1.53, 0.64, 0.92, 0.0, -0.73, -0.18, -1.53, 0.81, 0.92, 0.0, 0.55, 0.0, 1.23, 0.36, -1.30, 0.30]
+
+        self.set_stiffness_data_acquisition()
+
+        for i_joint in range(len(joint_names)):
+            self.set_joint_angles(position[i_joint], joint_names[i_joint])
+            rospy.sleep(0.25)
+            print("please wait...")
+
+        print("all joint states have been configured -> ready for data acquisition")
 
 
     def record_data_point(self):
@@ -257,23 +276,18 @@ class Central:
 
         else:
             print("no luck, there is currently no blob that's been identified")
-        
-        self.is_data_capture_on = False
 
 
     def save_data_points(self):
         #####
-        # this method saves in a file all data points captured so far
+        # Save in a .npy file all data points captured so far
+        # Outputs:
+        #   .npy file containing all training data points
         #####
         print("*********")
         print("call to method: save_data_points()")
 
         np.save(self.path_to_dataset, np.asarray(self.training_data2))
-
-        # with open('training_data_today.npy') as f:
-        #     np.save(f, self.training_data2)
-
-        self.is_list_saving_on = False
 
 
     def central_execute(self):
@@ -292,23 +306,24 @@ class Central:
 
         rate = rospy.Rate(10) # sets the sleep time to 10ms
 
+        rospy.sleep(3.0)
+
         # set joint stiffness and ready for data acquisition
-        self.set_stiffness_data_acquisition()
-        print("*********")
-        print("setting joints in stiff mode for training data acquisition")
+        #self.set_joint_states_data_acquisition()
 
         while not rospy.is_shutdown():
-            self.set_stiffness_data_acquisition()
+            #self.set_stiffness_data_acquisition()
+            self.set_stiffness(False)
 
             # if flag has been raised, record a data point
             if self.is_data_capture_on:
                 self.record_data_point()
+                self.is_data_capture_on = False
 
             # if flag has been raised, save all data points
             if self.is_list_saving_on:
                 self.save_data_points()
-            
-            #rospy.sleep(1.0)
+                self.is_list_saving_on = False
 
         # remove stiffness when the node stops executing
         self.set_stiffness(self.stiffness)
