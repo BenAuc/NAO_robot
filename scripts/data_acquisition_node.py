@@ -1,4 +1,14 @@
 #!/usr/bin/env python
+
+#################################################################
+# file name: data_acquisition_node.py
+# author's name: Diego, Priya, Vildana, Benoit Auclair
+# created on: 06-06-2022
+# last edit: 07-06-2022 (Benoit)
+# function: records training data points and saves it in a file
+# outputs: .npy file that contains the data points
+#################################################################
+
 import rospy
 from std_msgs.msg import String, Header
 from geometry_msgs.msg import Pose, Point, Quaternion
@@ -240,7 +250,7 @@ class Central:
                 "RHipRoll", "RHipPitch", "RKneePitch", "RAnklePitch", "RAnkleRoll", "RShoulderPitch", "RShoulderRoll",
                 "RElbowYaw", "RElbowRoll", "RWristYaw", "RHand"]
 
-        position = [0.06, -0.22, 0.58, 0.24, -0.00, -0.91, -1.55, 0.26, -0.73, 0.18, -1.53, 0.64, 0.92, 0.0, -0.73, -0.18, -1.53, 0.81, 0.92, 0.0, 0.55, 0.0, 1.23, 0.36, -1.30, 0.30]
+        position = [0.2, -0.22, 0.58, 0.24, -0.50, -0.51, -1.55, 0.26, -0.73, 0.18, -1.53, 0.64, 0.92, 0.0, -0.73, -0.18, -1.53, 0.81, 0.92, 0.0, 0.55, 0.0, 1.23, 0.36, -1.30, 0.30]
 
         self.set_stiffness_data_acquisition()
 
@@ -309,11 +319,11 @@ class Central:
         rospy.sleep(3.0)
 
         # set joint stiffness and ready for data acquisition
-        #self.set_joint_states_data_acquisition()
+        self.set_joint_states_data_acquisition()
 
         while not rospy.is_shutdown():
-            #self.set_stiffness_data_acquisition()
-            self.set_stiffness(False)
+            self.set_stiffness_data_acquisition()
+            #self.set_stiffness(False)
 
             # if flag has been raised, record a data point
             if self.is_data_capture_on:

@@ -1,13 +1,13 @@
-#################################################################
+#!/usr/bin/env python
+
+# #################################################################
 # file name: cmac_training_script.py
-# author's name: Diego
+# author's name: Diego, Benoit, Priya, Vildana
 # created on: 30-05-2022
 # last edit: 06-06-2022 (Benoit Auclair)
 # function: ROS node that computes motor commands of shoulder joint 
 #       to track a red blob in the visual field
 #################################################################
-# 
-# #!/usr/bin/env python
 
 import rospy
 from std_msgs.msg import String, Header
@@ -22,7 +22,6 @@ import copy
 from matplotlib import pyplot as plt
 
 class Central:
-
 
     def __init__(self):
 
@@ -46,14 +45,13 @@ class Central:
         self.cmac_nb_inputs = 2
         self.cmac_nb_outputs = 2
         self.cmac_res = 50 # resolution
-        self.cmac_field_size = 3 # receptive field size: set to 3 or 5 depending on the task, see tutorial description
+        self.cmac_field_size = 5 # receptive field size: set to 3 or 5 depending on the task, see tutorial description
         self.cmac_nb_neurons = self.cmac_field_size # to be defined, max field_size x field_size
         self.path_to_weight_matrix = '/home/bio/bioinspired_ws/src/tutorial_4/data/cmac_weight_matrix.npy'
 
-
         # receptive field: see additional material 3 on moodle. Here 5 neurons with coordinates in shape of a cross.
-        #self.cmac_rf = [[0, 3], [1, 0], [2, 2], [3, 4], [4, 1]] 
-        self.cmac_rf = [[0, 0], [1, 1], [2, 2]] 
+        self.cmac_rf = [[0, 3], [1, 0], [2, 2], [3, 4], [4, 1]] 
+        #self.cmac_rf = [[0, 0], [1, 1], [2, 2]] 
         self.cmac_weight_table = np.random.uniform(-0.2, 0.2, (self.cmac_res, self.cmac_res, self.cmac_nb_outputs)) # Not all entries correspond to a neuron, depends on self.cmac_nb_neurons
 
         # define camera resolution
@@ -279,72 +277,72 @@ class Central:
         return [float(coordinates[0]) / self.cam_x_max, float(coordinates[1]) / self.cam_y_max]
 
 
-    def get_L2_neuron_position(self, input_data):
-        #####
-        # this method returns the position of neurons in L2 activated by a given input
-        # Inputs:
-        #  input_data: array of dim 2 x 1 containing the (x, y) normalized pixel coordinates
-        # Outputs:
-        #  neuron_pos: array of dimensions set by the size of the receptive field and number of ouputs
-        #       containing the indices of the activated L2 neurons in the weight table
-        #####
+    # def get_L2_neuron_position(self, input_data):
+    #     #####
+    #     # this method returns the position of neurons in L2 activated by a given input
+    #     # Inputs:
+    #     #  input_data: array of dim 2 x 1 containing the (x, y) normalized pixel coordinates
+    #     # Outputs:
+    #     #  neuron_pos: array of dimensions set by the size of the receptive field and number of ouputs
+    #     #       containing the indices of the activated L2 neurons in the weight table
+    #     #####
 
-        # initialize variables
-        position = [] # position of single L2 neuron
-        neuron_pos = [] # positions of all L2 neurons
-        displacement_list = [] # list of displacements along input dimensions
-        quantized_ip_list = [] # list of quantized inputs
+    #     # initialize variables
+    #     position = [] # position of single L2 neuron
+    #     neuron_pos = [] # positions of all L2 neurons
+    #     displacement_list = [] # list of displacements along input dimensions
+    #     quantized_ip_list = [] # list of quantized inputs
         
-        # NOTE: THIS LOOP WAS INTEGRATED IN THE FOLLOWING LOOP
-        # # Perform quantization step (L1)
-        # for i_channel in range(self.cmac_nb_inputs):
+    #     # NOTE: THIS LOOP WAS INTEGRATED IN THE FOLLOWING LOOP
+    #     # # Perform quantization step (L1)
+    #     # for i_channel in range(self.cmac_nb_inputs):
 
-        #     # quantize the input per the chosen resolution
-        #     quantized_ip = int(self.input_normalization(input_data)[i_channel] * self.cmac_res)
+    #     #     # quantize the input per the chosen resolution
+    #     #     quantized_ip = int(input_data)[i_channel] * self.cmac_res
 
-        #     # safety check to force the quantization to remain within boundaries
-        #     if quantized_ip >= self.cmac_res:
-        #         quantized_ip = self.cmac_res
+    #     #     # safety check to force the quantization to remain within boundaries
+    #     #     if quantized_ip >= self.cmac_res:
+    #     #         quantized_ip = self.cmac_res
 
-        #     # append to the list
-        #     quantized_ip_list.append(quantized_ip)
+    #     #     # append to the list
+    #     #     quantized_ip_list.append(quantized_ip)
 
-        # find coordinates of all activated L2 neurons
-        for i_neuron in range(self.cmac_nb_neurons):
-            position = []
+    #     # find coordinates of all activated L2 neurons
+    #     for i_neuron in range(self.cmac_nb_neurons):
+    #         position = []
             
-            # for all dimensions
-            for inputs in range(self.cmac_nb_inputs):
+    #         # for all dimensions
+    #         for inputs in range(self.cmac_nb_inputs):
 
-                # quantize the input per the chosen resolution
-                quantized_ip = int(self.input_normalization(input_data)[inputs] * self.cmac_res)
+    #             # quantize the input per the chosen resolution
+    #             quantized_ip = int(input_data)[inputs] * self.cmac_res
 
-                # safety check to force the quantization to remain within boundaries
-                if quantized_ip >= self.cmac_res:
-                    quantized_ip = self.cmac_res
+    #             # safety check to force the quantization to remain within boundaries
+    #             if quantized_ip >= self.cmac_res:
+    #                 quantized_ip = self.cmac_res
 
-                # compute the shift
-                #
-                # shift_amount  = (self.cmac_field_size - quantized_ip_list[inputs]) % self.cmac_field_size
-                shift_amount  = (self.cmac_field_size - quantized_ip) % self.cmac_field_size
+    #             # compute the shift
+    #             #
+    #             # shift_amount  = (self.cmac_field_size - quantized_ip_list[inputs]) % self.cmac_field_size
+    #             shift_amount  = (self.cmac_field_size - quantized_ip) % self.cmac_field_size
 
-                # compute local coordinates in receptive field
-                local_coord = (shift_amount  + self.cmac_rf[i_neuron][inputs]) % self.cmac_field_size
+    #             # compute local coordinates in receptive field
+    #             local_coord = (shift_amount  + self.cmac_rf[i_neuron][inputs]) % self.cmac_field_size
 
-                # compute L2 neuron coordinates in the weight tables
-                coord = quantized_ip + local_coord
+    #             # compute L2 neuron coordinates in the weight tables
+    #             coord = quantized_ip + local_coord
                 
-                # append to list
-                position.append(coord) # why do we use a flat array for a set of (x,y) coordinates ? 
-                # this can work but can also be misleading
+    #             # append to list
+    #             position.append(coord) # why do we use a flat array for a set of (x,y) coordinates ? 
+    #             # this can work but can also be misleading
 
-            # append to list
-            neuron_pos.append(position)
+    #         # append to list
+    #         neuron_pos.append(position)
 
-        print("**************")
-        print("set of L2 neurons activated :", neuron_pos)
+    #     print("**************")
+    #     print("set of L2 neurons activated :", neuron_pos)
 
-        return neuron_pos
+    #     return neuron_pos
 
 
     def get_cmac_output(self, neuron_pos):
@@ -357,6 +355,8 @@ class Central:
         # Initialize the outputs to 0
         x = [0] * self.cmac_nb_outputs
 
+        print("init x to : ", x)
+
         # Loop through L3 neurons within the window (receptive field) selected in L2
         for jk_neuron in range(self.cmac_nb_neurons):
 
@@ -365,10 +365,17 @@ class Central:
 
                 # fetch index of weight in table
                 row = neuron_pos[jk_neuron][0]
-                col = neuron_pos[jk_neuron][1] 
+                col = neuron_pos[jk_neuron][1]
+
+                print("row :", row)
+                print("col :", col) 
 
                 # Add weight from weight table
+                print("output # ", i_output)
+                
                 x[i_output] = x[i_output] + self.cmac_weight_table[row, col, i_output]
+
+                print("x value ", x[i_output])
 
         # check whether joints are within their limit range and if not enforce it
         # check left shoulder pitch
@@ -392,51 +399,56 @@ class Central:
         return x
 
 
-    # def get_L2_neuron_position(self):
+    def get_L2_neuron_position(self, input_data):
     #     #####
     #     # this method returns the position of neurons in L2 activated by a given input
+    #     # Inputs:
+    #     #  input_data: array of dim 2 x 1 containing the (x, y) normalized pixel coordinates
+    #     # Outputs:
+    #     #  neuron_pos: array of dimensions set by the size of the receptive field n_a and number of ouputs n_x
+    #     #       contains the indices of the activated L2 neurons in the weight table
     #     #####
 
-    #     position = []
+        position = []
 
-    #     for i_neuron in range(self.cmac_nb_neurons):
+        for i_neuron in range(self.cmac_nb_neurons):
 
-    #         print("******************************")
-    #         print("neuron # :", i_neuron)
-    #         print("******************************")
-    #         neuron_coord = []
+            # print("******************************")
+            # print("neuron # :", i_neuron)
+            # print("******************************")
+            neuron_coord = []
 
-    #         for i_channel in range(self.cmac_nb_inputs):
+            for i_channel in range(self.cmac_nb_inputs):
 
-    #             print("*******")
-    #             print("channel # :", i_channel)
+                # print("*******")
+                # print("channel # :", i_channel)
                     
-    #             input_index_q = int(self.input_normalization(self.blob_coordinates)[i_channel] * self.cmac_res)
-    #             print("shift idx :", input_index_q)
+                input_index_q = int(input_data[i_channel] * self.cmac_res)
+                # print("shift idx :", input_index_q)
 
-    #             shift_amount_d = self.cmac_field_size - input_index_q % self.cmac_field_size
-    #             print("shift amount :", shift_amount_d)
+                shift_amount_d = self.cmac_field_size - input_index_q % self.cmac_field_size
+                # print("shift amount :", shift_amount_d)
 
-    #             print("neuron coordinates in rf:", self.cmac_rf[i_neuron][i_channel])
-    #             local_coord_p = (shift_amount_d + self.cmac_rf[i_neuron][i_channel]) % self.cmac_field_size
-    #             print("local coordinates :", local_coord_p)
+                #print("neuron coordinates in rf:", self.cmac_rf[i_neuron][i_channel])
+                local_coord_p = (shift_amount_d + self.cmac_rf[i_neuron][i_channel]) % self.cmac_field_size
+                #print("local coordinates :", local_coord_p)
 
-    #             coord = input_index_q + local_coord_p
+                coord = input_index_q + local_coord_p
 
-    #             neuron_coord.append(coord)
-    #             rospy.sleep(0.5)
+                if coord >= self.cmac_res:
+                    coord = self.cmac_res-1
 
-    #         position.append(neuron_coord)
+                neuron_coord.append(coord)
 
-    #     print("**************")
-    #     print("set of L2 neurons activated :", position)
+            position.append(neuron_coord)
+
+        #print("**************")
+        #print("set of L2 neurons activated :", position)
         
-    #     return position
+        return position
 
 
     def set_joint_angles(self, head_angle, joint_name):
-
-        print("call to : set_joint_angles()")
 
         joint_angles_to_set = JointAnglesWithSpeed()
         joint_angles_to_set.joint_names.append(joint_name) # each joint has a specific name, look into the joint_state topic or google
@@ -466,7 +478,7 @@ class Central:
             if len(self.blob_coordinates) > 0:
 
                 # compute which L2 neurons are activated
-                neuron_pos = self.get_L2_neuron_position(self.blob_coordinates)
+                neuron_pos = self.get_L2_neuron_position(self.input_normalization(self.blob_coordinates))
                 # neuron_pos = self.get_L2_neuron_position()
 
                 # compute the joint states
@@ -480,7 +492,7 @@ class Central:
                 self.set_joint_angles(x[0], "LShoulderPitch")
                 self.set_joint_angles(x[1], "LShoulderRoll")
 
-            rospy.sleep(1.0)
+            rospy.sleep(0.5)
 
         # remove stiffness when the node stops executing
         self.set_stiffness(self.stiffness)

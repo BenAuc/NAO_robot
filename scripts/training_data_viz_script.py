@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 #################################################################
 # file name: training_data_viz_script.py
 # author's name: Benoit Auclair
@@ -8,19 +10,17 @@
 # outputs: 2 figures that show the distribution of the inputs and outputs
 #################################################################
 
-#!/usr/bin/env python
-
 from matplotlib import pyplot as plt
 import numpy as np
 
-path_to_dataset = '/home/bio/bioinspired_ws/src/tutorial_4/data/training_data_v3.npy'
+path_to_dataset = '/home/bio/bioinspired_ws/src/tutorial_4/data/training_data_today.npy'
 training_dataset = np.load(path_to_dataset)
 
 # second data set if we want to overlay and compare
 # path_to_dataset = '/home/bio/bioinspired_ws/src/tutorial_4/data/training_data_v3.npy'
 # training_dataset2 = np.load(path_to_dataset)
 
-nb_datapoints = 75 # set to 75 or 150 depending on the task, see tutorial description
+nb_datapoints = 150 # set to 75 or 150 depending on the task, see tutorial description
 
 #####
 # plot camera pixel distribution
