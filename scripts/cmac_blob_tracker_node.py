@@ -367,15 +367,15 @@ class Central:
                 row = neuron_pos[jk_neuron][0]
                 col = neuron_pos[jk_neuron][1]
 
-                print("row :", row)
-                print("col :", col) 
+                # print("row :", row)
+                # print("col :", col) 
 
                 # Add weight from weight table
-                print("output # ", i_output)
+                # print("output # ", i_output)
                 
                 x[i_output] = x[i_output] + self.cmac_weight_table[row, col, i_output]
 
-                print("x value ", x[i_output])
+                # print("x value ", x[i_output])
 
         # check whether joints are within their limit range and if not enforce it
         # check left shoulder pitch

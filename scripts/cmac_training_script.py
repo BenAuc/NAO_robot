@@ -22,6 +22,8 @@ import cv2
 import numpy as np
 import copy
 from matplotlib import pyplot as plt
+from cmac_blob_tracker_node import Central
+from mpl_toolkits.mplot3d import Axes3D
 
 def input_normalization(coordinates):
     #####
@@ -93,6 +95,10 @@ def input_normalization(coordinates):
 #     return neuron_pos
 
 
+
+# Instead of copying the functions for the forward pass, its better to import them 
+
+
 def get_L2_neuron_position(input_data):
     #     #####
     #     # this method returns the position of neurons in L2 activated by a given input
@@ -142,7 +148,7 @@ def get_L2_neuron_position(input_data):
         return position
 
 
-def get_cmac_output(neuron_pos):
+def get_cmac_output(neuron_pos, cmac_weight_table):
     # Calculate the ouput of the CMAC after L3
     # Inputs:
     #   neuron_pos: list of indices of the neurons within the receptive field, computed in L2. Can be viewed as activtion address vector
@@ -197,6 +203,7 @@ def get_cmac_output(neuron_pos):
 
     return x
 
+
 def train_cmac(cmac_weight_table, data, num_epochs):
     # Train the CMAC
     # Inputs:
@@ -211,7 +218,7 @@ def train_cmac(cmac_weight_table, data, num_epochs):
 
     # Initialize variables
     new_cmac_weight_table = np.zeros(cmac_weight_table.shape) # Trained weight table
-    alpha = 0.02 # Learning rate
+    alpha = 0.2 # Learning rate
     inputs = data[:, 0:] # Inputs
     t = data[:,-2:] # Targets (ground truth)
     MSE_sample = np.zeros((data.shape[0], num_epochs)) # MSE of each sample at every epoch
@@ -227,7 +234,7 @@ def train_cmac(cmac_weight_table, data, num_epochs):
 
         np.random.shuffle(np.asarray(data))
 
-        inputs = data[:, 0:] # Inputs
+        inputs = data[:, 0:2] # Inputs
         t = data[:,-2:] # Targets (ground truth)
 
         # Iterate through all data samples
@@ -238,10 +245,10 @@ def train_cmac(cmac_weight_table, data, num_epochs):
 
             # Forward pass
             neuron_pos = get_L2_neuron_position(inputs_normalized)
-            x = get_cmac_output(neuron_pos)
+            x = get_cmac_output(neuron_pos, cmac_weight_table)
 
             # Compute MSE of data sample
-            MSE_sample[d, epoch] = np.square(np.subtract(t[d],x)).mean()
+            MSE_sample[d, epoch] = np.square(np.subtract(t[d], x)).mean()
 
             # Loop through L3 neurons within the window (receptive field) selected in L2
             for jk_neuron in range(cmac_nb_neurons):
@@ -254,10 +261,11 @@ def train_cmac(cmac_weight_table, data, num_epochs):
                     col = neuron_pos[jk_neuron][1] 
                     wijk = cmac_weight_table[row, col, i_output] # Weight to be updated
                     increment = alpha * (t[d, i_output] - x[i_output]) / cmac_nb_neurons # Increment to be added
-                    new_cmac_weight_table[row, col, i_output] = wijk + increment # New weight
+                    cmac_weight_table[row, col, i_output] = wijk + increment # New weight
 
         # Update weights for this epoch
         new_cmac_weight_table = cmac_weight_table
+        #cmac_weight_table = new_cmac_weight_table
 
         # Print MSE of this epoch
         MSE[epoch] = MSE_sample[:, epoch].mean()
@@ -275,6 +283,8 @@ def save_weight_matrix():
 
     np.save(path_to_weight_matrix, np.asarray(cmac_weight_table))
 
+cmac = Central()
+
 # define cmac parameters
 cmac_nb_inputs = 2
 cmac_nb_outputs = 2
@@ -286,7 +296,8 @@ path_to_weight_matrix = '/home/bio/bioinspired_ws/src/tutorial_4/data/cmac_weigh
 # receptive field: see additional material 3 on moodle. Here 5 neurons with coordinates in shape of a cross.
 cmac_rf = [[0, 3], [1, 0], [2, 2], [3, 4], [4, 1]] 
 #cmac_rf = [[0, 0], [1, 1], [2, 2]] 
-cmac_weight_table = np.random.normal(-0.25, 0.25, (cmac_res, cmac_res, cmac_nb_outputs)) # Not all entries correspond to a neuron, depends on cmac_nb_neurons
+# cmac_weight_table = np.random.normal(-0.25, 0.25, (cmac_res, cmac_res, cmac_nb_outputs)) # Not all entries correspond to a neuron, depends on cmac_nb_neurons
+cmac_weight_table = np.random.uniform(-0.2, 0.2, (cmac_res, cmac_res, cmac_nb_outputs)) # Not all entries correspond to a neuron, depends on cmac_nb_neurons
 
 # define camera resolution
 # pixels idx run from 0 to resolution - 1
@@ -308,7 +319,7 @@ num_data_samples = 150
 num_epochs = 150
 cmac_weight_table, MSE = train_cmac(cmac_weight_table, training_dataset[0:num_data_samples-1,:], num_epochs)
 
-print("weight matrix : ", cmac_weight_table)
+# print("weight matrix : ", cmac_weight_table)
 
 # save cmac training
 save_weight_matrix()
@@ -327,7 +338,7 @@ bin_size = 0.04
 bins = np.arange(np.amin(cmac_weight_table), np.amax(cmac_weight_table) + bin_size, bin_size)
 distribution = np.histogram(cmac_weight_table, bins=bins)[0]
 
-print("bins : ", bins)
+# print("bins : ", bins)
 
 plt.hist(np.ndarray.flatten(cmac_weight_table))
 plt.xlabel("Binned weight value total " + str(len(bins) - 1) + " bins")
@@ -335,6 +346,46 @@ plt.ylabel("# of counts")
 plt.title("Histogram of the weight distribution")
 plt.show()
 
+
+## Make surf plot from a forward pass
+# Compute forward pass values
+print("Please wait, computing CMAC outputs...")
+cam_y_max = 240 - 1
+cam_x_max = 320 - 1
+x = np.linspace(0, cam_x_max, 100).T       # Generate artificial x coordinates
+y = np.linspace(0, cam_y_max, 100).T       # Generate artificial y coordinates
+# inputs = np.hstack((x, y))                 # Summarize artificail inputs
+X, Y = np.meshgrid(x, y)                   # Generate mesh for later surf plot
+pitch = np.zeros(X.shape)                  # Initialize pitch matrix
+roll = np.zeros(X.shape)                   # Initialize roll matrix
+for x_coordinate in range(len(x)):
+    for y_coordinate in range(len(y)):
+        sel_input = [x[x_coordinate], y[y_coordinate]] # Select input sample
+        inputs_normalized = input_normalization(sel_input) # normalize the inputs
+        # Forward pass
+        neuron_pos = get_L2_neuron_position(inputs_normalized)
+        output = get_cmac_output(neuron_pos, cmac_weight_table) # Renamed "x" to "output" to prevent naming conflicts
+        # Store pitch and roll
+        pitch[y_coordinate, x_coordinate] = output[0]
+        roll[y_coordinate, x_coordinate] = output[1]
+print("Computation completed")
+
+# Make surf plots
+fig = plt.figure()
+# Plot the pitch
+ax1 = fig.add_subplot(211, projection="3d")
+ax1.plot_surface(X, Y, pitch)
+ax1.set_xlabel("x")
+ax1.set_ylabel("y")
+ax1.set_zlabel("Pitch")
+# Plot the roll
+ax2 = fig.add_subplot(212, projection="3d")
+ax2.plot_surface(X, Y, roll)
+ax2.set_xlabel("x")
+ax2.set_ylabel("y")
+ax2.set_zlabel("Roll")
+
+plt.show()
 
 
 

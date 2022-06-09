@@ -4,7 +4,7 @@
 # file name: training_data_viz_script.py
 # author's name: Benoit Auclair
 # created on: 02-06-2022
-# last edit: 06-06-2022
+# last edit: 09-06-2022 (Diego)
 # purpose: visualize the data points acquired to train the cmac
 # inputs: path(s) to the dataset(s) and number of data points to visualize
 # outputs: 2 figures that show the distribution of the inputs and outputs
@@ -12,6 +12,7 @@
 
 from matplotlib import pyplot as plt
 import numpy as np
+from mpl_toolkits.mplot3d import Axes3D
 
 path_to_dataset = '/home/bio/bioinspired_ws/src/tutorial_4/data/training_data_today.npy'
 training_dataset = np.load(path_to_dataset)
@@ -67,4 +68,22 @@ plt.plot([pitch_min, pitch_max], [roll_min, roll_min], color='red')
 plt.xlabel("pitch angle (rad)")
 plt.ylabel("roll angle (rad)")
 plt.title("Joint state distribution for all " + str(training_dataset.shape[0]) + " points")
+plt.show()
+
+
+# Surface plot of the aquired data
+fig = plt.figure()
+# Plot the pitch
+ax1 = fig.add_subplot(211, projection="3d")
+ax1.plot_trisurf(x, y, pitch)
+ax1.set_xlabel("x")
+ax1.set_ylabel("y")
+ax1.set_zlabel("Pitch")
+# Plot the roll
+ax2 = fig.add_subplot(212, projection="3d")
+ax2.plot_trisurf(x, y, roll)
+ax2.set_xlabel("x")
+ax2.set_ylabel("y")
+ax2.set_zlabel("Roll")
+
 plt.show()
