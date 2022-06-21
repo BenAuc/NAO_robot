@@ -11,6 +11,7 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
+
 class FFNN:
 
     def __init__(self, num_inputs, num_outputs, num_layers, hidden_layer_dim):
@@ -106,7 +107,7 @@ class FFNN:
 
         # store gradients
         self.grads['W' + str(self.num_layers)] = dW
-        self.grads['b' + str(self.num_layers)] = db
+        self.grads['b' + str(self.num_layers)] = np.mean(db,axis=0)
 
         # perform backward pass on subsequent layers
         for i_layer in range(self.num_layers - 2, -1, -1):
@@ -123,9 +124,49 @@ class FFNN:
 
             # store gradients
             self.grads['W' + str(i_layer + 1)] = dW
-            self.grads['b' + str(i_layer + 1)] = db
+            self.grads['b' + str(i_layer + 1)] = np.mean(db,axis=0)
 
         return self.grads
+
+    def predict(self, input):
+        """
+        Predicts output of the model
+        Input:
+        -input: input to the model of shape (N, D) where N is the # of samples in the batch and D the # of features in each sample
+
+        Output:
+        -predictions: numpy array of shape (N, 1) for predicted class
+
+        """
+
+        output = self.forward(input) # output is N x 10
+
+        # logits are first normalized between 0 and 1 and then we take the exponential
+        output_exp = np.exp(output - np.max(output, axis=1, keepdims=True))
+
+        # softmax function: each exponential is divided by the sum of all scores
+        output_probs = output_exp / np.sum(output_exp, axis=1, keepdims=True)
+
+        predictions = np.argmax(output_probs, axis=1)
+
+        return predictions
+
+    def step(self, step_size):
+        """
+        Update weights
+        Inputs:
+        - step_size: Step size of gradient descent
+        """
+        # Update weights with gradient descent
+        for key in self.model_params.keys():
+            self.model_params[key] = self.model_params[key] - step_size * self.grads[key]
+
+    def zero_grad(self):
+        """
+        Resets the gradients to zero
+        """
+        for key in self.grads.keys():
+            self.grads[key] = self.grads[key]*0.0
 
 
 class Fully_Connected_Layer:
