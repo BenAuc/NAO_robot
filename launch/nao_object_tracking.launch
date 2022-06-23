@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<launch>
+    <!--include other launch files-->
+    <include file="$(find nao_bringup)/launch/nao_full_py.launch">
+    </include>
+
+    <include file="$(find nao_apps)/launch/tactile.launch">
+    </include>
+
+    <!-- Load parameters from yaml files containing waypoints to parameter server-->
+    <rosparam command="load"
+        file="$(find tutorial_5)/data/config/joint_limits.yaml"/>
+
+    <!--launch the object tracker node-->
+    <node name="ObjectTrackerNode" pkg="tutorial_5" type="object_tracker_node.py"
+	output="screen" respawn="true"/>
+
+    <!--launch the shoulder controller tracker node-->
+    <node name="ShoulderControllerNode" pkg="tutorial_5" type="shoulder_controller_node.py"
+	output="screen" respawn="true"/>
+
+</launch>
