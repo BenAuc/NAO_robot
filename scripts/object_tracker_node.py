@@ -17,6 +17,7 @@ import cv2
 import numpy as np
 
 
+
 class ObjectTracker:
     """
     Class implementing the tracking of an object in NAO's camera stream
@@ -34,6 +35,7 @@ class ObjectTracker:
         self.cam_x_max = 320 - 1 # camera resolution
         self.lower_red = np.array([161,155,84]) # lower bound of the tracked object's color in HSV
         self.upper_red = np.array([179,255,255]) # upper bound of the tracked object's color in HSV
+        
 
         # define frequency of execution of this node
         self.frequency = 5.0 # Hz
@@ -47,7 +49,7 @@ class ObjectTracker:
 
         # define messages
         self.blob_coordinates_msg = Point()
-
+        self.load_weight_path = '/home/bio/bioinspired_ws/src/tutorial_4/data/model_weights_NAO/weight_matrix_final.pickle'
 
     def image_cb(self,data):
         """
@@ -156,6 +158,7 @@ class ObjectTracker:
             self.blob_coordinates = None
         
 
+
     def input_normalization(self, coordinates):
         """
         Normalize the blob coordinates.
@@ -185,7 +188,7 @@ class ObjectTracker:
             # sleep to target frequency
             self.rate.sleep()
 
-
+    
     def step(self):
         """
         Perform an iteration of blob tracking.
@@ -199,7 +202,7 @@ class ObjectTracker:
             
             # normalize the blob coordinates
             data = self.input_normalization(self.blob_coordinates)
-
+            
             # create message
             self.blob_coordinates_msg = Point(data[0], data[1], 0)
 

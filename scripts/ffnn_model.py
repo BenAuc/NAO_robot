@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 #################################################################
 # file name: ffnn_model.py
 # author's name: Diego, Priya, Vildana, Benoit Auclair

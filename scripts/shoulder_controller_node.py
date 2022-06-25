@@ -15,6 +15,8 @@ from geometry_msgs.msg import Pose, Point, Quaternion
 from std_srvs.srv import Empty
 from naoqi_bridge_msgs.msg import JointAnglesWithSpeed, Bumper, HeadTouch
 from sensor_msgs.msg import Image, JointState
+from ffnn_model import FFNN, MSE
+import pickle
 
 import numpy as np
 import copy
@@ -46,6 +48,7 @@ class ShoulderController:
         self.max_roll = 0.39
         self.min_roll = -0.32
 
+        self.load_weight_path = '/home/bio/bioinspired_ws/src/tutorial_4/data/model_weights_NAO/weight_matrix_final.pickle'
         # define joints and resting position
         self.joint_names = ["HeadYaw", "HeadPitch", "LShoulderPitch", "LShoulderRoll", "LElbowYaw", "LElbowRoll", "LWristYaw",
                 "LHand", "LHipYawPitch", "LHipRoll", "LHipPitch", "LKneePitch", "LAnklePitch", "LAnkleRoll", "RHipYawPitch",
@@ -144,7 +147,7 @@ class ShoulderController:
         -mapping to output space of shoulder joint
         """
 
-        return ffnn_output  * (np.array([self.max_pitch, self.max_roll], dtype=float) - np.array([self.min_pitch, self.min_roll], dtype=float)) + np.array([self.min_pitch, self.min_roll], dtype=float)
+        return ffnn_output  * (np.array([self.max_pitch, self.max_roll], dtype=float) + np.array([self.min_pitch, self.min_roll], dtype=float)) + np.array([self.min_pitch, self.min_roll], dtype=float)
 
 
     def object_tracking(self, data):
@@ -198,23 +201,29 @@ class ShoulderController:
             # the following is for testing purposes
             print("shoulder controller node fetched coordinates : ", self.object_coordinates)
             
+            with open(self.load_weight_path, 'rb') as handle:
+                model_params =  pickle.load(handle)
+
+            model = FFNN(num_inputs=2, num_outputs=2, num_layers=3, hidden_layer_dim=8, load_model=True, model_params=model_params)
             ### to be completed ###
 
             # Compute FFNN output
-            # shoulder_joint_state = TBD...
-
+            x_norm = model.forward(self.object_coordinates.reshape(1,2))
+            print(x_norm)
             # Denormalize FFNN output
-            # x = self.output_denormalization(x_norm)
+            x = self.output_denormalization(x_norm)
 
             # # publish and set the joint states
-            # print("writing to shoulder pitch :", x[0])
-            # print("writing to shoulder roll :", x[1])
-
-            # self.set_stiffness(True)
-            # self.set_joint_angles(x[0], "LShoulderPitch")
-            # self.set_joint_angles(x[1], "LShoulderRoll")
-            # self.set_joint_angles(-1,'LElbowYaw')
-            # self.set_joint_angles(-1,'LElbowRoll')
+            print("writing to shoulder pitch :", x[0,0])
+            print("writing to shoulder roll :", x[0,1])
+            print(x_norm)
+            print(self.object_coordinates)
+            
+            self.set_stiffness(True)
+            self.set_joint_angles(x[0,0], "LShoulderPitch")
+            self.set_joint_angles(x[0,1], "LShoulderRoll")
+            self.set_joint_angles(-1,'LElbowYaw')
+            self.set_joint_angles(-1,'LElbowRoll')
 
 
 if __name__=='__main__':
