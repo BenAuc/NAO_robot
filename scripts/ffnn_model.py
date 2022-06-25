@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 #################################################################
 # file name: ffnn_model.py
 # author's name: Diego, Priya, Vildana, Benoit Auclair
@@ -9,7 +7,6 @@
 #################################################################
 
 import numpy as np
-from matplotlib import pyplot as plt
 
 
 class FFNN:
@@ -421,7 +418,7 @@ class MSE:
         N, D = model_output.shape
 
         # compute mean squared error
-        loss = np.mean(0.5 * (ground_truth - model_output) ** 2)
+        loss = np.mean(0.5 * (ground_truth - model_output) **2)
 
         return loss
 
@@ -440,7 +437,7 @@ class MSE:
         N, D = model_output.shape
 
         # compute derivative of the cross entropy with respect to each class and each sample in the batch
-        d_loss = np.mean(ground_truth - model_output)
+        d_loss = - ground_truth + model_output
 
         return d_loss
 

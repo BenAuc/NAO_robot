@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 
 #################################################################
 # file name: ffnn_regression_NAO_training_script.py
@@ -11,10 +10,9 @@
 # outputs: pickle file that contains the weight matrices, training statistics and the loss/accuracy curves
 #################################################################
 
-from ffnn_model import FFNN, CrossEntropy
+from ffnn_model import FFNN, MSE
 import numpy as np
 from matplotlib import pyplot as plt
-from mnist import MNIST
 import pickle
 
 if __name__ == '__main__':
@@ -24,35 +22,35 @@ if __name__ == '__main__':
     output_dim = 2  # 2 degrees of freedom
     num_layers = 3  # number of all layers (excluding the inputs)
     hidden_layer_dim = 16  # number of neurons per hidden layer
-    epochs = 10  # number of epochs
-    batch_size = 8  # number of samples going through the model at each iteration during batch training
+    epochs = 5  # number of epochs
+    batch_size = 30  # number of samples going through the model at each iteration during batch training
     step_size = 0.05 # Gradient descent step size alpha
     loss_function = MSE()  # instantiate loss function
     mnist_path = "../data/mnist-data"  # path to the mnist data folder
     save_weight_path = "../data/model_weights_NAO/weight_matrix_final.pickle"  # path to the mnist data folder
     save_statistics_path = "../data/model_weights_NAO/fnn_statistics_final.pickle" 
     regularisation = 0.1
+    pitch_limits = np.array([-2.0857, 2.0857])
+    roll_limits = np.array([-0.3142, 1.3265])
+    pitch_range = pitch_limits[1] - pitch_limits[0]
+    roll_range = roll_limits[1] - roll_limits[0]
+
 
     # get train and test sets
-    mnist = MNIST(mnist_path)
-    mnist.gz = True
-    trainX, trainY = mnist.load_training()
-    testX, testY = mnist.load_testing()
+    dataset = np.load("../data/NAO_training_data.npy")
+    trainX_raw = dataset[:,0:2]
+    trainY_raw = dataset[:,2:4]
 
-    # Dataset -> np.array
-    trainX = np.array(trainX)  # should be N x 784
-    trainY = np.array(trainY)
-    testX = np.array(testX)
-    testY = np.array(testY)
+    # normalize input and output
+    cam_y_max = 240 - 1
+    cam_x_max = 320 - 1
 
-    # Standardize input
-    mean = trainX.mean()
-    std = trainX.std()
-    trainX = (trainX - mean) / std
-    testX = (testX - mean) / std
+    trainX = trainX_raw/np.array([239,319])
+    trainY = (trainY_raw - np.array([pitch_limits[0], roll_limits[0]]))/ np.array([pitch_range, roll_range])
+
 
     # Batchs
-    num_batches = int(np.floor(trainY.size / batch_size))
+    num_batches = int(np.floor(trainY.shape[0] / batch_size))
     BX = [trainX[(i * batch_size):((i + 1) * batch_size)] for i in range(num_batches)]  # list of batches trainX
     BY = [trainY[(i * batch_size):((i + 1) * batch_size)] for i in range(num_batches)]  # list of batches trainY
 
@@ -96,15 +94,11 @@ if __name__ == '__main__':
         y_pred = model.predict(trainX)
 
         loss_train[epoch] = loss_function.forward(output, trainY)
-        acc_train[epoch] = np.mean(y_pred == trainY)
 
         # train and test loss of whole test set
 
-        output_test = model.forward(testX)
-        y_pred_test = model.predict(testX)
-
-        loss_test[epoch] = loss_function.forward(output_test, testY)
-        acc_test[epoch] = np.mean(y_pred_test == testY)
+        #output_test = model.forward(testX)
+        #loss_test[epoch] = loss_function.forward(output_test, testY)
 
     with open(save_weight_path, 'wb') as handle:
         pickle.dump(model.model_params, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -120,20 +114,14 @@ if __name__ == '__main__':
     print("training loss :", loss_train)
 
     font_size = 18
-    fig, ax = plt.subplots(1,2)
+    fig, ax = plt.subplots(1,1)
 
-    ax[0].set_title("Loss over epochs for training and test datasets", fontsize=font_size)
-    ax[0].plot(list(range(epochs)),loss_train, color = 'r', label='loss_train', linewidth=2)
-    ax[0].plot(list(range(epochs)),loss_test, color = 'b', label='loss_test')
-    ax[0].set_ylabel("Cross-entropy loss", fontsize=font_size)
-    ax[0].set_xlabel("Epoch", fontsize=font_size)
-    ax[0].legend()
+    ax.set_title("Loss over epochs for training and test datasets", fontsize=font_size)
+    ax.plot(list(range(1,epochs+1)),loss_train, color = 'r', label='loss_train', linewidth=2)
+    #ax[0].plot(list(range(epochs)),loss_test, color = 'b', label='loss_test')
+    ax.set_ylabel("MSE loss", fontsize=font_size)
+    ax.set_xlabel("Epoch", fontsize=font_size)
+    ax.set_xticks(range(1,epochs+1))
+    ax.legend()
 
-    ax[1].set_title("Prediction accuracy over epochs for training and test datasets", fontsize=font_size)
-    ax[1].plot(list(range(epochs)),acc_train, color = 'r', label='acc_train ' + str(acc_train[-1][0]) + ' %', linewidth=2)
-    ax[1].plot(list(range(epochs)),acc_test, color = 'b', label='acc_test ' + str(acc_test[-1][0]) + ' %')
-    ax[1].set_ylabel("Accuracy (%)", fontsize=font_size)
-    ax[1].set_xlabel("Epoch", fontsize=font_size)
-    ax[1].legend(loc='lower right')
-
-    plt.show()
+    fig.show()
