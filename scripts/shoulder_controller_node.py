@@ -4,20 +4,19 @@
 # file name: shoulder_controller_node.py
 # author's name: Diego, Benoit, Priya, Vildana
 # created on: 23-06-2022
-# last edit: 06-06-2022 (Benoit Auclair)
+# last edit: 27-06-2022 (Benoit Auclair): edits to denormalization method
 # function: ROS node that computes motor commands of shoulder joint 
 # to follow a red blob in the visual field
 #################################################################
 
 import rospy
 from std_msgs.msg import String, Header
-from geometry_msgs.msg import Pose, Point, Quaternion
+from geometry_msgs.msg import Point
 from std_srvs.srv import Empty
 from naoqi_bridge_msgs.msg import JointAnglesWithSpeed, Bumper, HeadTouch
-from sensor_msgs.msg import Image, JointState
-from ffnn_model import FFNN, MSE
+from sensor_msgs.msg import JointState
+from ffnn_model import FFNN, Linear
 import pickle
-
 import numpy as np
 import copy
 
@@ -40,25 +39,40 @@ class ShoulderController:
         # define joint limits
         self.l_shoulder_pitch_limits = rospy.get_param("joint_limits/left_shoulder/pitch")
         self.l_shoulder_roll_limits = rospy.get_param("joint_limits/left_shoulder/roll")
-        self.joint_limit_safety_f = rospy.get_param("joint_limits/safety")[0]
+        self.joint_limit_safety_factor = rospy.get_param("joint_limits/safety")[0]
 
-        # define output space of the nodes where the shoulder joint state is mapped on to
-        self.max_pitch = 0.06
-        self.min_pitch = -0.63
-        self.max_roll = 0.39
-        self.min_roll = -0.32
+        print('pitch limits :', self.l_shoulder_pitch_limits)
 
-        self.load_weight_path = '/home/bio/bioinspired_ws/src/tutorial_4/data/model_weights_NAO/weight_matrix_final.pickle'
+        # load trained model
+        self.load_weight_path = '/home/bio/bioinspired_ws/src/tutorial_4/data/model_weights_NAO/weight_matrix.pickle'
+        
+        with open(self.load_weight_path, 'rb') as handle:
+            model_params =  pickle.load(handle)
+
+        self.model_controller = FFNN(num_inputs=2, num_outputs=2, num_layers=2, hidden_layer_dim=8, activation_func=Linear(), load_model=True, model_params=model_params)
+
+        # define parameters to denormalize the output space
+        self.load_normalization_path = "/home/bio/bioinspired_ws/src/tutorial_4/data/model_weights_NAO/fnn_normalization.pickle" 
+
+        with open(self.load_normalization_path, 'rb') as handle:
+            self.output_space_normalization =  pickle.load(handle)
+
+        self.max_pitch = self.output_space_normalization['max_pitch']
+        self.min_pitch = self.output_space_normalization['min_pitch']
+        self.max_roll = self.output_space_normalization['max_roll']
+        self.min_roll = self.output_space_normalization['min_roll']
+
+        print('max_pitch :', self.max_pitch)
+        print('min_pitch :', self.min_pitch)
 
         # define resting position of all joints during data acquisition
         self.joint_names = ["HeadYaw", "HeadPitch", "LShoulderPitch", "LShoulderRoll", "LElbowYaw", "LElbowRoll", "LWristYaw",
                 "LHand", "LHipYawPitch", "LHipRoll", "LHipPitch", "LKneePitch", "LAnklePitch", "LAnkleRoll", "RHipYawPitch",
                 "RHipRoll", "RHipPitch", "RKneePitch", "RAnklePitch", "RAnkleRoll", "RShoulderPitch", "RShoulderRoll",
                 "RElbowYaw", "RElbowRoll", "RWristYaw", "RHand"]
-        self.rest_position = [0.15949392318725586, -0.07213997840881348, 0.5322561264038086, 0.22545599937438965, 0.21932005882263184, -0.7623560428619385, -1.586197853088379, 0.2656000256538391, -0.724006175994873, 0.19485998153686523, -1.535889744758606, 0.9096200466156006, 0.9225810170173645, -8.26716423034668e-05, -0.724006175994873, -0.1978440284729004, -1.535889744758606, 0.9219760894775391, 0.9226999878883362, 0.0, 0.6811380386352539, -0.19179201126098633, 1.2179540395736694, 0.32218194007873535, -1.3116121292114258, 0.30159997940063477]
+        self.rest_position = [0.1594, -0.0721, 0.5322, 0.2254, 0.36658406257629395, -0.9725141525268555, -0.6289820671081543, 0.2656, -0.724006175994873, 0.19485998153686523, -1.535889744758606, 0.9096200466156006, 0.9225810170173645, -8.26716423034668e-05, -0.724006175994873, -0.1978440284729004, -1.535889744758606, 0.9219760894775391, 0.9226999878883362, 0.0, 0.6811380386352539, -0.19179201126098633, 1.2179540395736694, 0.32218194007873535, -1.3116121292114258, 0.30159997940063477]
         self.velocity = [0.1, 0.1, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10]
         self.effort =   [0.9, 0.9, 0.0, 0.0, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9]
-
 
         # create topic subscribers
         self.object_tracker_sub = rospy.Subscriber("/nao_robot/tracked_object/coordinates", Point, self.object_tracking) # fetch coordinates of tracked object
@@ -125,12 +139,13 @@ class ShoulderController:
         print("setting joint states in desired configuration")
 
         # stiffen up all joints as required
-        self.set_stiffness_data_acquisition()
+        self.set_stiffness(True)
+        #self.set_stiffness_data_acquisition()
 
         # go through all joints and set at desired position
         for i_joint in range(len(self.joint_names)):
             self.set_joint_angles(self.rest_position[i_joint], self.joint_names[i_joint])
-            rospy.sleep(0.25)
+            rospy.sleep(0.15)
             print("please wait...")
 
         print("all joint states have been configured -> ready for tracking")
@@ -150,8 +165,7 @@ class ShoulderController:
         # publish to topc
         self.jointStiffnessPub.publish(stiffness_msg)
 
-        rospy.sleep(1.0)
-
+        rospy.sleep(0.5)
 
 
     def set_joint_angles(self, head_angle, joint_name):
@@ -173,7 +187,30 @@ class ShoulderController:
         -mapping to output space of shoulder joint
         """
 
-        return ffnn_output  * (np.array([self.max_pitch, self.max_roll], dtype=float) + np.array([self.min_pitch, self.min_roll], dtype=float)) + np.array([self.min_pitch, self.min_roll], dtype=float)
+        # denormalize the output with the statistics of the training set
+        scale = np.array([self.max_pitch, self.max_roll], dtype=float) - np.array([self.min_pitch, self.min_roll], dtype=float)
+        output_denorm = np.multiply(ffnn_output, scale) + np.array([self.min_pitch, self.min_roll], dtype=float)
+
+        # safety check
+        # enforce model output within joint states limits
+
+        if output_denorm[0, 0] < self.l_shoulder_pitch_limits[0] * self.joint_limit_safety_factor:
+            output_denorm[0] = self.l_shoulder_pitch_limits[0] * self.joint_limit_safety_factor
+            print('pitch corrected to :', self.l_shoulder_pitch_limits[0] * self.joint_limit_safety_factor)
+
+        elif output_denorm[0, 0] > self.l_shoulder_pitch_limits[1] * self.joint_limit_safety_factor:
+            output_denorm[0] = self.l_shoulder_pitch_limits[1] * self.joint_limit_safety_factor
+            print('pitch corrected to :', self.l_shoulder_pitch_limits[1] * self.joint_limit_safety_factor)
+
+        if output_denorm[0, 1] < self.l_shoulder_roll_limits[0] * self.joint_limit_safety_factor:
+            output_denorm[1] = self.l_shoulder_roll_limits[0] * self.joint_limit_safety_factor
+            print('roll corrected to :', self.l_shoulder_roll_limits[0] * self.joint_limit_safety_factor)
+
+        elif output_denorm[0, 1] > self.l_shoulder_roll_limits[1] * self.joint_limit_safety_factor:
+            output_denorm[1] = self.l_shoulder_roll_limits[1] * self.joint_limit_safety_factor
+            print('roll corrected to :', self.l_shoulder_roll_limits[1] * self.joint_limit_safety_factor)
+
+        return output_denorm
 
 
     def object_tracking(self, data):
@@ -205,13 +242,13 @@ class ShoulderController:
         Outputs:
         -runs the step function.
         """
+
+        rospy.sleep(3)
+
         # set joint state as done during data acquisition
         self.set_joint_states_data_acquisition()
 
         while not rospy.is_shutdown():
-
-            # set joint stiffness
-            self.set_stiffness_data_acquisition()
 
             # perform step
             self.step()
@@ -231,32 +268,32 @@ class ShoulderController:
 
         if self.object_coordinates is not None:
             
-            # the following is for testing purposes
-            #print("shoulder controller node fetched coordinates : ", self.object_coordinates)
-            
-            with open(self.load_weight_path, 'rb') as handle:
-                model_params =  pickle.load(handle)
 
-            model = FFNN(num_inputs=2, num_outputs=2, num_layers=3, hidden_layer_dim=8, load_model=True, model_params=model_params)
-            ### to be completed ###
+            # Compute FFNN forward pass & output
+            print('************ iteration ***************')
+            print("blob coordinates :", self.object_coordinates)
 
-            # Compute FFNN output
-            x_norm = model.forward(self.object_coordinates.reshape(1,2))
-            print(x_norm)
+            x_norm = self.model_controller.forward(self.object_coordinates.reshape(1,2))
+            print('x_norm :', x_norm)
+
             # Denormalize FFNN output
-            x = self.output_denormalization(x_norm)
+            x_denorm = self.output_denormalization(x_norm)
 
-            # # publish and set the joint states
-            print("writing to shoulder pitch :", x[0,0])
-            print("writing to shoulder roll :", x[0,1])
-            print(x_norm)
-            print(self.object_coordinates)
+            # publish and set the joint states
+            print("writing to shoulder pitch :", x_denorm[0,0])
+            print("writing to shoulder roll :", x_denorm[0,1])
+            print('x_denorm :', x_denorm)
             
             self.set_stiffness(True)
-            self.set_joint_angles(x[0,0], "LShoulderPitch")
-            self.set_joint_angles(x[0,1], "LShoulderRoll")
-            self.set_joint_angles(-1,'LElbowYaw')
-            self.set_joint_angles(-1,'LElbowRoll')
+
+            self.set_joint_angles(x_denorm[0,0], "LShoulderPitch")
+            rospy.sleep(0.2)
+            self.set_joint_angles(x_denorm[0,1], "LShoulderRoll")
+            rospy.sleep(0.2)
+            self.set_joint_angles(-0.36,'LElbowYaw') 
+            rospy.sleep(0.2)
+            self.set_joint_angles(-0.81,'LElbowRoll')
+            rospy.sleep(0.2)
 
 
 if __name__=='__main__':

@@ -33,7 +33,8 @@ class ObjectTracker:
         self.blob_coordinates = None # coordinates of tracked object
         self.cam_y_max = 240 - 1 # camera resolution
         self.cam_x_max = 320 - 1 # camera resolution
-        self.lower_red = np.array([161,155,84]) # lower bound of the tracked object's color in HSV
+        self.lower_red = np.array([161,195,134]) # lower bound of the tracked object's color in HSV
+        # self.lower_red = np.array([161,155,84]) # lower bound of the tracked object's color in HSV
         self.upper_red = np.array([179,255,255]) # upper bound of the tracked object's color in HSV
         
 
@@ -209,7 +210,7 @@ class ObjectTracker:
             # Publish blob coordinates
             self.redBlobPub.publish(self.blob_coordinates_msg)
 
-            print("object tracker node publishing coordinates : ", data)
+            #print("object tracker node publishing coordinates : ", data)
 
         else:
             
@@ -219,7 +220,7 @@ class ObjectTracker:
             # Publish blob coordinates
             self.redBlobPub.publish(self.blob_coordinates_msg)
 
-            print("object tracker node publishing no coordinates")
+            #print("object tracker node publishing no coordinates")
 
 
 if __name__=='__main__':

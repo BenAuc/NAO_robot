@@ -13,7 +13,7 @@ import numpy as np
 
 class FFNN:
 
-    def __init__(self, num_inputs, num_outputs, num_layers, hidden_layer_dim, load_model=False, model_params={}):
+    def __init__(self, num_inputs, num_outputs, num_layers, hidden_layer_dim, activation_func, load_model=False, model_params={}):
         """
         Intialization of the model
         """
@@ -22,7 +22,7 @@ class FFNN:
         self.num_outputs = num_outputs 
         self.num_layers = num_layers
         self.hidden_layer_dim = hidden_layer_dim # number of neurons in each hidden layer
-        self.activation_func = Linear() # select activation function applied after each but the last later
+        self.activation_func = activation_func # select activation function applied after each but the last later
         self.layer = Fully_Connected_Layer() # type of hidden layer is affine, fully-connected
 
         # class variable to save the gradients during the backward pass

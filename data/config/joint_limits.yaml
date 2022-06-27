@@ -2,7 +2,7 @@
 
 joint_limits:
   # safety factor
-  safety: [0.05]
+  safety: [0.95]
 
   # shoulder joints
   left_shoulder:
