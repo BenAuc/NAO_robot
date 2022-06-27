@@ -9,6 +9,7 @@
 #       to track a red blob in the visual field
 #################################################################
 
+
 import rospy
 from std_msgs.msg import String, Header
 from geometry_msgs.msg import Pose, Point, Quaternion
