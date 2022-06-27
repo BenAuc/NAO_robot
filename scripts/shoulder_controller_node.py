@@ -49,13 +49,16 @@ class ShoulderController:
         self.min_roll = -0.32
 
         self.load_weight_path = '/home/bio/bioinspired_ws/src/tutorial_4/data/model_weights_NAO/weight_matrix_final.pickle'
-        # define joints and resting position
+
+        # define resting position of all joints during data acquisition
         self.joint_names = ["HeadYaw", "HeadPitch", "LShoulderPitch", "LShoulderRoll", "LElbowYaw", "LElbowRoll", "LWristYaw",
                 "LHand", "LHipYawPitch", "LHipRoll", "LHipPitch", "LKneePitch", "LAnklePitch", "LAnkleRoll", "RHipYawPitch",
                 "RHipRoll", "RHipPitch", "RKneePitch", "RAnklePitch", "RAnkleRoll", "RShoulderPitch", "RShoulderRoll",
                 "RElbowYaw", "RElbowRoll", "RWristYaw", "RHand"]
-        self.rest_position = [0.06, -0.22, 0.58, 0.24, -0.00, -0.91, -1.55, 0.26, -0.73, 0.18, -1.53, 0.64, 0.92, 0.0, -0.73, 
-        -0.18, -1.53, 0.81, 0.92, 0.0, 0.55, 0.0, 1.23, 0.36, -1.30, 0.30]
+        self.rest_position = [0.15949392318725586, -0.07213997840881348, 0.5322561264038086, 0.22545599937438965, 0.21932005882263184, -0.7623560428619385, -1.586197853088379, 0.2656000256538391, -0.724006175994873, 0.19485998153686523, -1.535889744758606, 0.9096200466156006, 0.9225810170173645, -8.26716423034668e-05, -0.724006175994873, -0.1978440284729004, -1.535889744758606, 0.9219760894775391, 0.9226999878883362, 0.0, 0.6811380386352539, -0.19179201126098633, 1.2179540395736694, 0.32218194007873535, -1.3116121292114258, 0.30159997940063477]
+        self.velocity = [0.1, 0.1, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10]
+        self.effort =   [0.9, 0.9, 0.0, 0.0, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9]
+
 
         # create topic subscribers
         self.object_tracker_sub = rospy.Subscriber("/nao_robot/tracked_object/coordinates", Point, self.object_tracking) # fetch coordinates of tracked object
@@ -111,21 +114,44 @@ class ShoulderController:
 
 
     def set_joint_states_data_acquisition(self):
-    #####
-    # Set all joints in desired states prior to data acquisition
-    # Outputs:
-    #   Call to method that set the joint states 
-    #####
+        """
+        Set all joints in desired states as during data acquisition
+        Inputs: none
+        Outputs:
+        -Call to method that set the joint states 
+        """
 
         print("********")
         print("setting joint states in desired configuration")
 
+        # stiffen up all joints as required
+        self.set_stiffness_data_acquisition()
+
+        # go through all joints and set at desired position
         for i_joint in range(len(self.joint_names)):
             self.set_joint_angles(self.rest_position[i_joint], self.joint_names[i_joint])
             rospy.sleep(0.25)
             print("please wait...")
 
         print("all joint states have been configured -> ready for tracking")
+
+
+    def set_stiffness_data_acquisition(self):
+        """
+        Stiffen up all joints and degrees of freedom but the shoulder pitch and roll
+        Inputs: none
+        Outputs:
+        -Publication of JointState message on corresponding topic 
+        """
+
+        # create message to stiffness desired joints
+        stiffness_msg = JointState(Header(), self.joint_names, self.rest_position, self.velocity, self.effort)
+
+        # publish to topc
+        self.jointStiffnessPub.publish(stiffness_msg)
+
+        rospy.sleep(1.0)
+
 
 
     def set_joint_angles(self, head_angle, joint_name):
@@ -179,10 +205,17 @@ class ShoulderController:
         Outputs:
         -runs the step function.
         """
+        # set joint state as done during data acquisition
+        self.set_joint_states_data_acquisition()
 
         while not rospy.is_shutdown():
+
+            # set joint stiffness
+            self.set_stiffness_data_acquisition()
+
             # perform step
             self.step()
+
             # sleep to target frequency
             self.rate.sleep()
 
@@ -199,7 +232,7 @@ class ShoulderController:
         if self.object_coordinates is not None:
             
             # the following is for testing purposes
-            print("shoulder controller node fetched coordinates : ", self.object_coordinates)
+            #print("shoulder controller node fetched coordinates : ", self.object_coordinates)
             
             with open(self.load_weight_path, 'rb') as handle:
                 model_params =  pickle.load(handle)

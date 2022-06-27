@@ -22,7 +22,7 @@ class FFNN:
         self.num_outputs = num_outputs 
         self.num_layers = num_layers
         self.hidden_layer_dim = hidden_layer_dim # number of neurons in each hidden layer
-        self.activation_func = Sigmoid() # select activation function applied after each but the last later
+        self.activation_func = Linear() # select activation function applied after each but the last later
         self.layer = Fully_Connected_Layer() # type of hidden layer is affine, fully-connected
 
         # class variable to save the gradients during the backward pass
@@ -135,6 +135,7 @@ class FFNN:
 
         return self.grads
 
+
     def predict(self, input):
         """
         Predicts output of the model
@@ -157,6 +158,7 @@ class FFNN:
         predictions = np.argmax(output_probs, axis=1)
 
         return predictions
+
 
     def step(self, step_size):
         """
@@ -190,10 +192,6 @@ class FFNN:
         """
 
         np.save(path, self.model_params)
-
-
-
-
 
 
 class Fully_Connected_Layer:
@@ -331,6 +329,38 @@ class Relu:
         return dx
 
 
+class Linear:
+
+    def forward(self, input):
+        """
+        Compute output of the linear function
+
+        Inputs:
+        -input: input to the function
+
+        Outputs:
+        -output: input (function is linear)
+        """
+        
+        cache = input
+
+        return input, cache
+
+    def backward(self, cache, d_upstream):
+        """
+        Compute derivative of the linear function
+
+        Inputs:
+        -cache: result of the forward pass 
+        -d_upstream: upstream gradient
+
+        Outputs:
+        -dx: gradient of linear function, i.e. 1, multiplied by upstream derivative
+        """
+
+        return d_upstream
+
+
 class CrossEntropy:
 
     def __init__(self):
@@ -416,11 +446,9 @@ class MSE:
         Outputs:
         -loss: the mean squared error
         """
-        # extract number of samples and dimension of each sample in the batch
-        N, D = model_output.shape
 
         # compute mean squared error
-        loss = np.mean(0.5 * (ground_truth - model_output) **2)
+        loss = np.mean(0.5 * (ground_truth - model_output) ** 2)
 
         return loss
 
@@ -435,11 +463,9 @@ class MSE:
         Outputs:
         -d_loss: array of mean squared error gradients of dimensions (1,D)
         """
-        # extract number of samples and dimension of each sample in the batch
-        N, D = model_output.shape
 
-        # compute derivative of the cross entropy with respect to each class and each sample in the batch
-        d_loss = - ground_truth + model_output
+        # compute derivative of the mean squared error with respect to each sample in the batch
+        d_loss = -1 * (ground_truth - model_output)
 
         return d_loss
 
