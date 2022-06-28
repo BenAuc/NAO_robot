@@ -11,8 +11,8 @@
     <rosparam command="load"
         file="$(find tutorial_5)/data/config/joint_limits.yaml"/>
 
-    <!--launch the object tracker node-->
-    <node name="ObjectTrackerNode" pkg="tutorial_5" type="object_tracker_node.py"
+    <!--launch the marker tracker node-->
+    <node name="MarkerTrackerNode" pkg="tutorial_5" type="marker_tracker_node.py"
 	output="screen" respawn="true"/>
 
     <!--launch the shoulder controller tracker node-->

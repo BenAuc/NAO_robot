@@ -196,28 +196,13 @@ class ShoulderController:
         if self.object_coordinates is not None:
             
             ### to be completed ###
-
-            # Compute FFNN output
-            # shoulder_joint_state = TBD...
-
-            # Denormalize FFNN output
-            # x = self.output_denormalization(x_norm)
-
-            # # publish and set the joint states
-            # print("writing to shoulder pitch :", x[0])
-            # print("writing to shoulder roll :", x[1])
-
-            # self.set_stiffness(True)
-            # self.set_joint_angles(x[0], "LShoulderPitch")
-            # self.set_joint_angles(x[1], "LShoulderRoll")
-            # self.set_joint_angles(-1,'LElbowYaw')
-            # self.set_joint_angles(-1,'LElbowRoll')
+            pass
 
 
 if __name__=='__main__':
 
     #initialize the node and set name
-    rospy.init_node('object_tracker',anonymous=True) #initilizes node
+    rospy.init_node('markert_tracker',anonymous=True) #initilizes node
 
     # instantiate class and start loop function
     try:
