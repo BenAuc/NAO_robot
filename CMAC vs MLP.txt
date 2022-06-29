@@ -1,4 +1,0 @@
-CMAC vs MPL
-
-MPL showed a better performance compared to the CMAC. This might be due to the more complex structure of the MLP (2 neurons in first and 8 neurons in hidden and output layer). With MSE as loss function and gradient descent the model minimized the error after 5 epochs. The model had a loss of 0,0009998 at this epoch. CMAC on the other hand is a simple, but yet efficent algorithm, which has good results after 25 epochs. 
-The training phase was relatively short for both models, which can be attributed to the simple data set with two inputs and outputs each. For the trainig for both model 150 samples were used.
