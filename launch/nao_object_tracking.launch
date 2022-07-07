@@ -15,8 +15,8 @@
     <node name="MarkerTrackerNode" pkg="tutorial_5" type="marker_tracker_node.py"
 	output="screen" respawn="true"/>
 
-    <!--launch the shoulder controller tracker node-->
-    <node name="ShoulderControllerNode" pkg="tutorial_5" type="shoulder_controller_node.py"
-	output="screen" respawn="true"/>
+    <!--launch the node computing the behavior of the football player-->
+    <!-- <node name="FootballPlayerNode" pkg="tutorial_5" type="football_player_node.py"
+	output="screen" respawn="true"/> -->
 
 </launch>
