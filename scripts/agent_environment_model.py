@@ -23,6 +23,7 @@ import cv2.aruco as aruco
 """
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn import tree
 
 
 """
@@ -47,25 +48,39 @@ class Agent:
     -...
     """
 
-    def __init__(self, resolution, start_position, low_bound_yaw, up_bound_yaw, low_bound_roll, up_bound_roll):
+    def __init__(self, resolution_leg, resolution_ball, leg_displacement_lims, cam_x_lims, leg_displacement, ball_x, hip_roll_lims, knee_pitch_lims):
+
+        # SOME ACLARATIONS:
+        # - the state space is composed by two features: leg_displacement and ball_x
+        # - feature 1 (leg_displacement) is quantized with resolution_leg between hip_roll_lims[0] and hip_roll_lims[1]
+        # - feature 2 (ball_x) is quantized with resolution_ball between cam_x_lims[0] and cam_x_lims[1]
+        # - the knee_pitch_lims are only used later for robot movement
+        # - the action space is composed by three actions: move-in, move-out, and kick
+
+        # Initialize the actions dictionary the policy can use
+        self.action_dictionary = {
+            0: 'move-in',
+            1: 'move-out',
+            2: 'kick'
+            }
+
+        # Declare the two features in the state-space: the leg displacement and the ball x position
+        self.feature1 = np.linspace(leg_displacement_lims[0], leg_displacement_lims[1], resolution_leg)
+        self.feature2 = np.linspace(cam_x_lims[0], cam_x_lims[1], resolution_ball)
+
+        # Initialize the actions that the robot can perform
+        self.HipRollDiscretized = np.linspace(hip_roll_lims[0], hip_roll_lims[1], resolution_leg) # used for actions 'move-in' and 'move-out', thus resolution_leg
+        self.KneePitchDiscretized = np.linspace(knee_pitch_lims[0], knee_pitch_lims[1], 2)        # used for action 'kick', thus resolution = 2 (knee goes from back to front)
 
         # variable containing the environment the policy is about
-        # in this case this is the 2 degrees of freedom of the hip
-        self.environment = Environment(low_bound_yaw, up_bound_yaw, low_bound_roll, up_bound_roll, resolution)
+        self.environment = Environment(resolution_leg, resolution_ball, self.action_dictionary)
         
         # variable containing the policy the agent has so far learned
-        self.policy = Policy(nb_actions=4, resolution=resolution, environment=self.environment)
-        
-        # compute the linear id of the agent's current state in the policy table based on the 2 hip joint states given as start position vector
-        self.current_state_id = np.ravel_multi_index((start_position[0], start_position[1]), (resolution, resolution)) 
+        self.policy = Policy(environment=self.environment)
 
-        # define label easier to understand for each of the actions
-        self.action_dictionary = {
-            0: 'right',
-            1: 'up',
-            2: 'left',
-            3: 'down'
-        }
+        # compute the linear id of the agent's current state in the policy table based on the 2 hip joint states given as start position vector
+        current_state_coords = self.quantize_state(leg_displacement, ball_x)
+        self.current_state_id = self.environment.state_coords_to_state_id(current_state_coords)
 
         # flag to indicate that the agent is in position and ready to kick a goal
         # TODO: we can couple this flat to the press of a button to allow us to trigger the node when we want it to execute actions
@@ -75,6 +90,22 @@ class Agent:
         # self.jointStiffnessPub = rospy.Publisher("joint_stiffness", JointState, queue_size=1)
         # self.jointPub = rospy.Publisher("joint_angles",JointAnglesWithSpeed,queue_size=10) # Allow joint control
 
+    def quantize_state(self, leg_displacement, ball_x):
+        """
+        Quantize the state leg_displacement and the ball_x to find the coordinates of the state in the grid environment
+        Inputs:
+        - leg_displacement: float containing the displacement of the leg
+        - ball_x: float containing the x-coordinate of the ball
+        Outputs:
+        - state_coords: list containing the coordinates of the state on the grid environment
+        """
+
+        # quantize the state leg_displacement and the ball_x
+        state_coords = [0, 0]
+        state_coords[0] = np.argmin(np.abs(self.feature1 - leg_displacement))
+        state_coords[1] = np.argmin(np.abs(self.feature2 - ball_x))
+
+        return state_coords
 
     def step(self):
         """
@@ -94,16 +125,7 @@ class Agent:
         # Get the next state given the action
         self.current_state_id = self.policy.explored_actions[self.current_state_id][action_id]['next_state']
 
-        """
-        I think this is equivalent to what we did in the line above
-
-        # Given the ids of the current state and the action, update the current state to the next state and check if it lies within environment boundaries
-        self.current_state_id, is_in_bounds = self.policy.environment.move_to_next_state(self.current_state_id, action_id)
-
-        # Raise an error if the computed state is not within the boundaries of the environment
-        if not is_in_bounds:
-            raise ValueError('The computed next state of the agent lies outside the boundaries of the environment.')
-        """
+        return self.current_state_id
 
     def set_joint_angles(self, head_angle, joint_name):
         """
@@ -163,25 +185,28 @@ class Policy:
     -...
     """
 
-    def __init__(self, nb_actions, resolution, environment):
+    def __init__(self, environment):
         
         # Initialize the parameters of the policy
-        self.nb_actions = nb_actions        # number of actions
-        self.resolution = resolution        # resolution of the environment
-        self.nb_states = resolution ** 2    # number of states available in the environment
+        self.environment = environment # environment object 
+        self.action_dictionary = self.environment.action_dictionary # dictionary containing the actions the policy can perform
+        self.nb_actions = len(self.action_dictionary)        # number of actions
+        self.num_rows = self.environment.num_rows # number of rows in the grid environment
+        self.num_cols = self.environment.num_cols # number of columns in the grid environment
+        self.nb_states = self.num_rows * self.num_cols    # number of states available in the environment
         
-        # Create a table to store the values of the state-value function
-        self.V = np.zeros((self.nb_states, 1)) # V(s) = 0 for all states
-
         # Create a policy table
         self.policy = np.ones([self.nb_states, self.nb_actions]) / self.nb_actions # initialize the policy with uniform probability of taking each action
-
+        
         # define e-greedy policy epsilon parameter (exploitation threshold)
         self.epsilon = 0.3 # threshold when the agent starts exploiting the knowledge of the environment rather than exploring
         
-        self.environment = environment # environment object
-
         self.explored_actions = self.explore_environment() # list of size (nb_states, nb_actions) containing a state_action_pair for each state and action
+        
+        # Initialize learning parameters
+        self.alpha = 0.1 # learning rate alpha for the Q-learning algorithm
+        self.gamma = 0.99 # discount factor gamma for the Q-learning algorithm
+
 
     def new_state_action_pair(self):
         """
@@ -190,10 +215,12 @@ class Policy:
 
         # define state action pairs as dictionaries
         state_action_pair = {
-            'reward': 0,        # reward obtained by the agent in the next state (after taking the action)
             'next_state': 0,    # linear id of next state after taking the action
             'visited': False,   # whether the action has already been taken in the current state
-            'is_valid': True    # whether the next state is valid (i.e. it is within the boundaries of the environment)
+            'is_valid': True,   # whether the next state is valid (i.e. it is within the boundaries of the environment)
+            'R': 0,             # reward R obtained by the agent in the next state (after taking the action)
+            'P': 0,             # probability P of the action being taken in the next state (trainsition model: P(s'|s,a) = P(s'|s)P(a|s))
+            'Q': 0              # Q-value Q(s,a)
             }
 
         return state_action_pair
@@ -218,13 +245,18 @@ class Policy:
                 # Store self.state_action_pair in the cell
                 new_state.append(self.new_state_action_pair())
 
-                # Check if the action is valid (action doesn't lead the agent outside the boundaries of the environment)
-                next_state, next_state_is_in_bounds, next_reward = self.environment.move_to_next_state(state_id, action_id)
-                
-                # Update the properties of state-action transition to the next state
-                new_state[action_id]['next_state'] = next_state
-                new_state[action_id]['is_valid'] = next_state_is_in_bounds
-                new_state[action_id]['reward'] = next_reward
+                # Check if the action is a kick action (action_id == 2), if so, this action is not used to explore the enviornment
+                if action_id != 2:
+                    # Check if the action is valid (action doesn't lead the agent outside the boundaries of the environment)
+                    next_state, next_state_is_in_bounds, next_reward = self.environment.move_to_next_state(state_id, action_id)
+                    
+                    # Update the properties of state-action transition to the next state
+                    new_state[action_id]['next_state'] = next_state
+                    new_state[action_id]['is_valid'] = next_state_is_in_bounds
+                    # new_state[action_id]['R'] = next_reward
+                else:
+                    new_state[action_id]['next_state'] = state_id # if the action is kick, the next state is the same as the current state
+                    new_state[action_id]['is_valid'] = False
 
             # Append row to the list
             explored_actions.append(new_state)
@@ -238,42 +270,47 @@ class Policy:
 
         for s in range(self.nb_states):
             for a in range(self.nb_actions):
-                reward = self.explored_actions[s][a]['reward']
+                x, y = self.environment.state_id_to_coords(s)
+                a_name = self.action_dictionary[a]
+                reward = self.explored_actions[s][a]['R']
                 next_state = self.explored_actions[s][a]['next_state']
                 visited = self.explored_actions[s][a]['visited']
                 is_valid = self.explored_actions[s][a]['is_valid']
-                print('State: {}, Action: {}, Next State: {}, Next State Reward: {}, Visited: {}, Valid Transition: {}'.format(s, a, next_state, reward, visited, is_valid))
+                print('State: (ID: {}, 0-based coordinates: [{}, {}]), Action: {}, Next State: {}, Next State Reward: {}, Visited: {}, Valid Transition: {}\n'.format(s, x, y, a_name, next_state, reward, visited, is_valid))
 
     def plot(self):
         """
         Plot the policy
         """
 
+        # Whatever values you want to plot
+        value_list = self.environment.reward_grid.flatten()
+
         draw_vals = True
         plt.rcParams['figure.dpi'] = 175
         plt.rcParams.update({'axes.edgecolor': (0.32,0.36,0.38)})
         plt.rcParams.update({'font.size': 4})
-        plt.figure(figsize=(self.resolution, self.resolution))
-        plt.imshow(1 - self.V.reshape(self.resolution, self.resolution), cmap='gray', interpolation='none', clim=(0,1))
+        plt.figure(figsize=(self.num_rows, self.num_cols))
+        plt.imshow(1 - value_list.reshape(self.num_rows, self.num_cols), cmap='gray', interpolation='none', clim=(0,1))
         ax = plt.gca()
-        ax.set_xticks(np.arange(self.resolution)-.5)
-        ax.set_yticks(np.arange(self.resolution)-.5)
+        ax.set_xticks(np.arange(self.num_rows)-.5)
+        ax.set_yticks(np.arange(self.num_cols)-.5)
         ax.set_xticklabels([])
         ax.set_yticklabels([])
+        ax.set_xlabel('X position of the ball')
+        ax.set_ylabel('Displacement of the leg')
         for state_id in range(len(self.policy)):
-            x = state_id%self.resolution
-            y = int(state_id/self.resolution)
+            y, x = self.environment.state_id_to_coords(state_id)
             current_policy = self.policy[state_id] # get the policy for the current state
             gray = np.array((0.32,0.36,0.38))
             # Draw arrows for the actions
-            if self.explored_actions[state_id][0]['is_valid']: plt.arrow(x, y, float(current_policy[0])*.84, 0.0,  color=gray+0.2*(1-self.V[state_id]), head_width=0.1, head_length=0.1) # right
-            if self.explored_actions[state_id][1]['is_valid']: plt.arrow(x, y, 0.0, float(current_policy[1])*-.84, color=gray+0.2*(1-self.V[state_id]), head_width=0.1, head_length=0.1) # up
-            if self.explored_actions[state_id][2]['is_valid']: plt.arrow(x, y, float(current_policy[2])*-.84, 0.0, color=gray+0.2*(1-self.V[state_id]), head_width=0.1, head_length=0.1) # left
-            if self.explored_actions[state_id][3]['is_valid']: plt.arrow(x, y, 0.0, float(current_policy[3])*.84,  color=gray+0.2*(1-self.V[state_id]), head_width=0.1, head_length=0.1) # down
+            if self.explored_actions[state_id][0]['is_valid']: plt.arrow(x, y, 0.0, float(current_policy[0])*.84,  color=gray+0.2*(1-value_list[state_id]), head_width=0.1, head_length=0.1) # move-in (shown as arrown down)
+            if self.explored_actions[state_id][1]['is_valid']: plt.arrow(x, y, 0.0, float(current_policy[1])*-.84, color=gray+0.2*(1-value_list[state_id]), head_width=0.1, head_length=0.1) # move-out (shown as arrow up)
+            if self.explored_actions[state_id][2]['is_valid']: plt.arrow(x, y, float(current_policy[2])*.84, 0.0, color=gray+0.2*(1-value_list[state_id]), head_width=0.1, head_length=0.1) # kick (shown as arrow right)
 
-            if draw_vals and self.V[state_id]>0:
-                vstr = '{0:.1e}'.format(self.V[state_id]) if self.resolution == 8 else '{0:.6f}'.format(self.V[state_id])
-                plt.text(x-0.45,y+0.45, vstr, color=(gray*self.V[state_id]), fontname='OpenSans')
+            if draw_vals and value_list[state_id]>0:
+                vstr = '{0:.1e}'.format(value_list[state_id]) if self.num_rows == 8 else '{0:.6f}'.format(value_list[state_id])
+                plt.text(x-0.45,y+0.45, vstr, color=(gray*value_list[state_id]))
         plt.grid(color=(0.42,0.46,0.48), linestyle=':')
         ax.set_axisbelow(True)
         ax.tick_params(color=(0.42,0.46,0.48),which='both',top=False,left=False,right=False,bottom=False)
@@ -292,17 +329,17 @@ class Policy:
         # intialize a list of unvisited actions for the current state -> needed for random selection of an action
         unvisited_actions = []
 
-        # intialize a list of rewards of the state-action pairs -> needed for greedy policy
-        rewards = []
+        # intialize a list of Q-values of the state-action pairs -> needed for greedy policy
+        Q_list = []
 
         # check whether each of the actions is valid and unvisited
         for action in range(self.nb_actions):
 
-            # check if the action is valid
+            # check if the action is valid (action doesn't lead the agent outside the boundaries of the environment)
             if self.explored_actions[state][action]['is_valid']:
 
-                # add the reward of the state-action pair to the list of rewards
-                rewards.append(self.explored_actions[state][action]['reward'])
+                # add the Q-value of the state-action pair to the list Q_list
+                Q_list.append(self.explored_actions[state][action]['Q'])
                     
                 # check if the action has already been visited
                 if (not self.explored_actions[state][action]['visited']):
@@ -310,8 +347,8 @@ class Policy:
                     # add the action to the list of unvisited actions
                     unvisited_actions.append(action)
             else:
-                # if the action is not valid, add a reward of -1 to the list of rewards
-                rewards.append(-1)
+                # if the action is not valid, add a Q of -1 to the list Q_list
+                Q_list.append(-1)
 
         # generate random number between 0 and 1 (decides whether to use the greedy or random policy)
         greedy_probability = np.random.randn(1)
@@ -319,8 +356,8 @@ class Policy:
         # if larger than e-greedy threshold then go with greedy policy
         if greedy_probability > self.epsilon:
 
-            # pick the action that yields the greatest reward
-            next_action_id = np.argmax(rewards)
+            # pick the action that yields the greatest Q
+            next_action_id = np.argmax(Q_list)
 
         # otherwise pick a random action
         else:
@@ -332,8 +369,8 @@ class Policy:
             
             # otherwise pick one among all valid actions
             else:
-                # pick a random action from the list of valid actions, where rewards is not -1
-                next_action_id = np.random.choice(np.arange(0, self.nb_actions)[np.where(rewards != -1)])
+                # pick a random action from the list of valid actions, where Q_list is not -1
+                next_action_id = np.random.choice(np.arange(0, self.nb_actions)[np.where(Q_list != -1)])
 
         return next_action_id
 
@@ -349,16 +386,56 @@ class Policy:
 
         pass
 
-    def update_policy(self, reward):
+    def update_model(self, current_state_id, next_state_id, action_id, reward):
         """
-        Handles ...
+        Works the same way as the function with the same name in the paper.
         Inputs:
-        -...
+        - current_state_id: int containing the id of the current state
+        - next_state_id: int containing the id of the next state
+        - action_id: int containing the id of the action taken
+        - reward: float containing the reward received
         Outputs:
-        - reward: reward previously obtained
+        - Q: numpy array containing the Q-values of the current state-action pairs
         """
 
-        pass
+        # Get the state coordinates and action direction vector
+        current_state_coords = self.environment.state_id_to_coords(current_state_id) # [row, col]
+        next_state_coords = self.environment.state_id_to_coords(next_state_id) # [row, col]
+        action_direction = self.environment.action_id_to_direction(action_id) # [yaw_dir, roll_dir]
+
+        # Compute the difference in state coordinates
+        delta_state_coords = next_state_coords - current_state_coords
+        delta_feature1 = delta_state_coords[0]
+        delta_feature2 = delta_state_coords[1]
+        
+        # Update the trees for the two state features and the reward
+        self.environment.update_tree(1, action_direction, current_state_coords, delta_feature1) # yaw
+        self.environment.update_tree(2, action_direction, current_state_coords, delta_feature2) # roll
+        self.environment.update_tree(3, action_direction, current_state_coords, reward) # reward
+
+        # Update the transition probabilities and rewards for the two state features
+        for state_id in range(self.nb_states):
+            for action_id in range(self.nb_actions):
+                # Translate the linear indices to actual coordinates on the grid
+                state_coords = self.environment.state_id_to_coords(state_id) # [row, col]
+                action_direction = self.environment.action_id_to_direction(action_id) # [yaw_dir, roll_dir]
+
+                # Predict the probability of the next state given the current state and action with the decision trees
+                pred_delta_feature1_prob = self.environment.predict_transition_probability(1, state_coords, action_direction)
+                pred_delta_feature2_prob = self.environment.predict_transition_probability(2, state_coords, action_direction)
+
+                # Update transition probability
+                P = pred_delta_feature1_prob * pred_delta_feature2_prob
+                self.explored_actions[state_id][action_id]['P'] = P
+
+                # Predict the reward with the decision trees
+                R = self.environment.reward_tree.predict(np.hstack((state_coords, action_direction)))
+                self.explored_actions[state_id][action_id]['R'] = R
+
+                # Update the Q-value
+
+                self.explored_actions[state_id][action_id]['Q'] += self.alpha * (R + self.gamma * np.max(self.explored_actions[state_id][action_id]['Q']) - self.explored_actions[state_id][action_id]['Q'])
+
 
 
 
@@ -371,26 +448,143 @@ class Environment:
     -...
     """
 
-    def __init__(self, low_bound_yaw, up_bound_yaw, low_bound_roll, up_bound_roll, resolution):
+    def __init__(self, resolution_leg, resolution_ball, action_dictionary):
         
-        self.yaw_dof = JointDegreeOfFreedom(resolution, up_bound_yaw, low_bound_yaw)
-        self.roll_dof = JointDegreeOfFreedom(resolution, up_bound_roll, low_bound_roll)
-        self.resolution = resolution
+        # Store the input arguments
+        self.num_rows = resolution_leg  # number of rows in the grid
+        self.num_cols = resolution_ball # number of columns in the grid
+        self.num_states = self.num_rows * self.num_cols # number of states in the grid
+        self.action_dictionary = action_dictionary # dictionary containing the actions
+        self.num_actions = len(action_dictionary) # number of actions possible
 
-        # initialize environment
-        # define default reward
-        self.default_reward = 0
-
-        # environment
-        self.reward_matrix = np.ones((resolution, resolution)) * self.default_reward
+        # Initialize the reward grid environment
+        self.default_R = -1 # default reward value
+        self.fall_R = -20   # reward for falling
+        self.score_R = 20   # reward for scoring a goal
+        self.block_R = -2   # reward for getting the ball blocked by the goalkeeper
+        self.miss_R = -10   # reward for missing the goal (kicked the ball outside of the goal)
+        self.reward_grid = np.ones((self.num_rows, self.num_cols)) * self.default_R # reward grid
 
         # Map actions to directions to move on the grid: -1 -> reduce, +1 -> augment
         self.action_to_direction = {
-            0: [0, 1],  # right
-            1: [-1, 0], # up
-            2: [0, -1], # left
-            3: [1, 0]   # down
+            # First column: change in hip roll, second column: change in knee pitch
+            0: [1, 0],  # move-in
+            1: [-1, 0], # move-out
+            2: [0, 1], # kick
         }
+
+        ## Initialize the decision trees
+        self.feature1_tree = tree.DecisionTreeClassifier() # Predict probability of change in state variable 1
+        self.feature2_tree = tree.DecisionTreeClassifier() # Predict probability of change in state variable 2
+        self.reward_tree = tree.DecisionTreeClassifier() # Predict average reward
+
+        # Initialize empty history of state-action pairs (all information is relative, not absolute)
+        self.history = np.zeros(3) # [feature1, feature2, action_id]
+        self.delta_feature1 = np.zeros(0) # feature 1 change
+        self.delta_feature2 = np.zeros(0) # feature 2 change
+        self.delta_reward = np.zeros(0) # reward change
+
+        # Give an ID to each tree and to each delta
+        self.tree_dict = {
+            1: self.feature1_tree,
+            2: self.feature2_tree,
+            3: self.reward_tree
+        }
+
+        self.delta_dict = {
+            1: self.delta_feature1,
+            2: self.delta_feature2,
+            3: self.delta_reward
+        }
+
+
+
+    def update_tree(self, tree_id, action_direction, state_coords, new_delta):
+        """
+        Update the decision tree with ID tree_id with the action action_id and the current state current_state_id.
+        Inputs:
+        - tree_id: int containing the id of the tree to update
+        - action_direction: list containing the direction vector of the action
+        - state_coords: list containing the coordinates of the current state
+        - new_delta: float containing the change in the state variable or reward
+        """
+
+        # Select the tree to update
+        tree = self.tree_dict[tree_id]
+
+        # Select the delta and extend it with the new one
+        delta = self.delta_dict[tree_id]
+        delta = np.append(delta, new_delta)
+
+        # Add the state-action pair to the history
+        self.history = np.vstack((self.history, np.hstack((state_coords, action_direction))))
+
+        # Update the tree
+        tree.fit(self.history, delta)
+
+    def predict_transition_probability(self, tree_id, state_coords, action_direction):
+        """
+        Predict the probability of transition from the current state to the next state.
+        Inputs:
+        - tree_id: int containing the id of the tree to update
+        - state_coords: list containing the coordinates of the current state
+        - action_direction: list containing the direction vector of the action
+        Outputs:
+        - probability: float containing the probability of transition
+        """
+
+        # Select the tree to predict
+        tree = self.tree_dict[tree_id]
+
+        # Predict the probability of transition
+        probability = tree.predict_proba(np.hstack((state_coords, action_direction)))[0][0]
+
+        return probability
+
+
+    def state_id_to_coords(self, state_id):
+        """
+        Get the state coordinates corresponding to the state_id.
+        Inputs:
+        - state_id: int containing the id of the state
+        Outputs:
+        - state: numpy array containing the state
+        """
+
+        # Get the state corresponding to the state_id
+        state_coords = np.unravel_index(state_id, (self.num_rows, self.num_cols))
+
+        return state_coords
+
+    def state_coords_to_state_id(self, state_coords):
+        """
+        Get the state_id corresponding to the state_coords.
+        Inputs:
+        - state_coords: list containing the coordinates of the state
+        Outputs:
+        - state_id: int containing the id of the state
+        """
+
+        # Get the state_id corresponding to the state_coords
+        state_id = np.ravel_multi_index(state_coords, (self.num_rows, self.num_cols))
+
+        return state_id
+
+
+    def action_id_to_direction(self, action_id):
+        """
+        Get the action corresponding to the action_id.
+        Inputs:
+        - action_id: int containing the id of the action
+        Outputs:
+        - action: numpy array containing the action
+        """
+        
+        # Get the action corresponding to the action_id
+        action = np.asarray(self.action_to_direction[action_id])
+
+        return action
+
 
     def move_to_next_state(self, current_state_id, action_id):
         """
@@ -403,23 +597,23 @@ class Environment:
         - is_in_bounds: boolean whether the next state is within the boundaries of the environment
         - reward: int containing the reward at the next state
         """
-
+        
         # Compute the coordinates of the current state on the grid environment (linear index to 2D coordinates)
-        current_state_coords = np.unravel_index(current_state_id, (self.resolution, self.resolution))
+        current_state_coords = self.state_id_to_coords(current_state_id)
         
         # Get the direction of the movement based on the action id
-        movement_vector = np.asarray(self.action_to_direction[action_id])
+        movement_vector = self.action_id_to_direction(action_id)
         
         # Compute the coordinates of the next state on the grid environment
         next_state_coords = current_state_coords + movement_vector
-
+        
         # Try to convert the coordinates of the next state to a linear index
         try:
             # Calculate the linear index of the next state (2D coordinates to linear index)
-            next_state_id = np.ravel_multi_index(next_state_coords, (self.resolution, self.resolution))
-
+            next_state_id = self.state_coords_to_state_id(next_state_coords)
+        
             # Get reward at the next state
-            reward = self.reward_matrix[next_state_coords[0], next_state_coords[1]]
+            reward = self.reward_grid[next_state_coords[0], next_state_coords[1]]
         except ValueError:
             # Happens when we have negative coordinates (out of bounds), so we return the current state
             next_state_id = current_state_id
@@ -429,23 +623,12 @@ class Environment:
             return next_state_id, is_in_bounds, reward
 
         # Check if the next state lies within the boundaries of the environment
-        is_in_bounds = (0 <= next_state_coords[0] < self.resolution) and (0 <= next_state_coords[1] < self.resolution)
+        is_in_bounds = (0 <= next_state_coords[0] < self.num_rows) and (0 <= next_state_coords[1] < self.num_cols)
 
         return next_state_id, is_in_bounds, reward
 
-
-
-    def log_reward(self,data):
-        """
-        Handles ...
-        Inputs:
-        -...
-        Outputs:
-        - ...
-        """
-
-        pass
-
+'''
+DEPRECATED: @Benoit, I don't think we need this anymore...
 
 class JointDegreeOfFreedom:
     """
@@ -458,10 +641,11 @@ class JointDegreeOfFreedom:
 
     def __init__(self, resolution, upper_bound, lower_bound):
 
-        self.lower_bound = 1
-        self.upper_bound = upper_bound
         self.resolution = resolution
-        self.current_state_id = None
+        self.upper_bound = upper_bound
+        self.lower_bound = lower_bound
+
+        self.state_space = np.linspace(lower_bound, upper_bound, resolution)
 
     def step(self, action_id, current_state_id):
         """
@@ -473,6 +657,8 @@ class JointDegreeOfFreedom:
         """
 
         pass
+
+'''
     
     
 # BELOW CODE IS ONLY FOR TEST PURPOSES, TO BE ABLE TO RUN THE FILE FROM HOME
@@ -481,14 +667,33 @@ if __name__=='__main__':
 
     # instantiate class and start loop function
     try:
+        print('Starting...')
 
-        # instantiate the agent
-        start_position = [2, 2]
-        low_bound_yaw, up_bound_yaw, low_bound_roll, up_bound_roll = -np.pi, np.pi, -np.pi, np.pi
-        resolution = 5
-        agent = Agent(resolution, start_position, low_bound_yaw, up_bound_yaw, low_bound_roll, up_bound_roll)
+        # Initialize the environment variables
+        RESOLUTION_LEG, RESOLUTION_BALL = 5, 5 # Resolution for the quantization of the leg displacement and ball x coordinate
+        HIP_ROLL_LIMS = [-np.pi/2, np.pi/2] # Limits of the hip joint roll
+        KNEE_PITCH_LIMS = [-np.pi/2, np.pi/2] # Limits of the knee joint pitch
+        LEG_DISPLACEMENT_LIMS = [-np.pi/2, np.pi/2] # Limits of the leg displacement
+        CAM_X_LIMS = [1, 200] # Limits of the camera x coordinate
+
+        # TODO: Here we should actually pass the measured values of the robot and the blob
+        leg_displacement = 1.0 # Displacement of the leg
+        ball_x = 1.0 # x coordinate of the ball
+
+        # Instantiate the agent, which also instantiates the policy and the environment
+        agent = Agent(resolution_leg=RESOLUTION_LEG, 
+            resolution_ball=RESOLUTION_BALL, 
+            leg_displacement_lims=LEG_DISPLACEMENT_LIMS,
+            cam_x_lims=CAM_X_LIMS,
+            leg_displacement=leg_displacement, 
+            ball_x=ball_x,
+            hip_roll_lims=HIP_ROLL_LIMS, 
+            knee_pitch_lims=KNEE_PITCH_LIMS
+            )
         agent.policy.print_explored_actions()
         agent.policy.plot()
+        
+        print('Done!')
         
     except:
         pass
