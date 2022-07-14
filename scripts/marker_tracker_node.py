@@ -2,6 +2,7 @@
 
 import rospy
 from geometry_msgs.msg import Point, PolygonStamped
+from jsk_recognition_msgs.msg import PolygonArray
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 import cv2
@@ -35,11 +36,7 @@ class ObjectTracker:
         rospy.Subscriber("/nao_robot/camera/top/camera/image_raw",Image,self.image_cb) # subscriber to NAO's camera stream
 
         # define topic publishers
-        self.redBlobPub = rospy.Publisher("/nao_robot/tracked_object/coordinates", Point, queue_size=1)  # the centroid coordinates of the tracked object
         self.markerPub = rospy.Publisher("/nao_robot/markers/polygon", PolygonStamped, queue_size=1)  # the polygon describing the outline of a marker + the marker ID
-
-        # define messages
-        self.blob_coordinates_msg = Point()
 
         # define ArUco parameters (source: https://people.eng.unimelb.edu.au/pbeuchat/asclinic/software/workflow_aruco_detection.html)
         self.MARKER_SIZE = 0.018 # Marker size in meters
@@ -57,7 +54,6 @@ class ObjectTracker:
         Inputs:
         -image coming from camera stream
         Outputs:
-        - calls the object detection method self.object_detection(cv_image)
         - calls the marker detection method self.marker_detection(cv_image)
         """
 
@@ -73,91 +69,12 @@ class ObjectTracker:
         
         # try detect the object
         try:
-            self.object_detection(cv_image)
             self.marker_corners, self.marker_ids = self.marker_detection(cv_image)
 
         except:
             pass
 
         cv2.waitKey(3) # a small wait time is needed for the image to be displayed correctly
-
-
-    def object_detection(self,image):
-        """
-        Extract coordinates of object of the target color in the visual field.
-        Inputs:
-        -image in cv2 format
-        Outputs:
-        -saves the object coordinates as array of (x,y) coordinates in the class variable self.blob_coordinates
-        """
-
-        # Transform image into HSV, select parts within the predefined red range color as a mask,
-        # dilate and erode the selected parts to remove noise
-        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        mask = cv2.inRange(hsv, self.lower_red, self.upper_red)
-        kernel = np.ones((5,5),np.uint8)
-        mask_dilation = cv2.dilate(mask, kernel, iterations=2)
-        mask_final = cv2.erode(mask_dilation, kernel, iterations=1)
-        kernel = np.ones((6,6),np.float32)/25
-        mask_final = cv2.filter2D(mask_final,-1,kernel)
-
-        # Apply mask to original image, show results
-        res = cv2.bitwise_and(image,image, mask= mask_final)
-
-        # Parameter definition for SimpleBlobDetector
-        params = cv2.SimpleBlobDetector_Params()
-        params.filterByArea  = True
-        params.minArea = 1000
-        params.maxArea = 200000
-        params.filterByInertia = True
-        params.minInertiaRatio = 0.0
-        params.maxInertiaRatio  = 0.8
-
-        # Applying the params
-        detector = cv2.SimpleBlobDetector_create(params)
-        keypoints = detector.detect(~mask_final)
-
-        #draw 
-        im_with_keypoints = cv2.drawKeypoints(~mask_final, keypoints, np.array([]), (0,0,255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-        #cv2.imshow("Keypoints", im_with_keypoints)
-
-        ## Find outer contours 
-        im, contours, hierarchy = cv2.findContours(mask_final, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
-        maxContour = 0
-        for contour in contours:
-            contourSize = cv2.contourArea(contour)
-            if contourSize > maxContour:
-                maxContour = contourSize
-                maxContourData = contour
-               
-        ## Draw
-        cv2.drawContours(image, maxContourData, -1, (0,255,0), 2, lineType = cv2.LINE_4)
-
-        # Calculate image moments of the detected contour
-        M = cv2.moments(maxContourData)
-
-        try:
-        # Draw a circle based centered at centroid coordinates
-            cv2.circle(image, (int(M['m10'] / M['m00']), int(M['m01'] / M['m00'])), 5, (0, 0, 0), -1)
-
-        # Show image:
-            cv2.imshow("outline contour & centroid", image)
-
-        except ZeroDivisionError:
-            pass
-
-        # Save center coordinates of the blob as a Point() message
-        point_x = int(M['m10'] / M['m00'])
-        point_y = int(M['m01'] / M['m00'])
-
-        # if the coordinates of a blob could be resolved
-        if point_x > 0 and point_y > 0:
-            # save in class variable
-            self.blob_coordinates = [point_x, point_y]
-
-        else:
-            # keep the arm steady where it was before that moment
-            self.blob_coordinates = None
 
 
     def marker_detection(self, image):
@@ -226,24 +143,28 @@ class ObjectTracker:
         return corners, ids
 
 
-    def publish_marker_polygons(self, corners, ids):
+    def publish_marker_polygons(self):
         """
-        This function is meant to show how to publish the polygon shape of the ArUco markers.
+        This function is meant to publish the polygon shape of the ArUco markers.
+        Inputs:
+        -corners: 4 x 2 array of (x,y) pixel coordinates
+        -ids: ArUco markers ids
+        Outputs:
+        -publish the markers ids and coordinates
         """
-
 
         # Process any ArUco markers that were detected
-        if ids is not None:          
+        if self.marker_ids is not None:          
 
             # Flatten ArUco IDs list to make it easier to work with
-            ids = ids.flatten()
+            ids = self.marker_ids.flatten()
 
             # Iterate over the markers detected
             for i_marker_id in range(len(ids)):
                 # Get the ID for this marker
                 this_id = ids[i_marker_id]
                 # Get the corners for this marker
-                corners_of_this_marker = corners[i_marker_id].reshape((4, 2))
+                corners_of_this_marker = self.marker_corners[i_marker_id].reshape((4, 2))
 
                 # Create and setup message
                 ps_message = PolygonStamped()
@@ -269,18 +190,6 @@ class ObjectTracker:
             self.markerPub.publish(ps_message)
         
 
-    def input_normalization(self, coordinates):
-        """
-        Normalize the blob coordinates.
-        Inputs:
-        -array of (x,y) coordinates of an object in the visual field.
-        Outputs:
-        -numpy array of normalized (x,y) coordinates.
-        """
-
-        return np.array(coordinates, dtype=float) / np.array([self.cam_x_max, self.cam_y_max], dtype=float)
-
-
     def run(self):
         """
         Main loop of class.
@@ -301,38 +210,18 @@ class ObjectTracker:
 
     def step(self):
         """
-        Perform an iteration of blob tracking.
+        Perform an iteration of marker tracking.
         Inputs:
         -self
         Outputs:
-        -publishes the blob coordinates as Point() message.
+        -publish the marker coordinates as PolygonStamped() message.
         """
 
-        # Publish the polygons of the edges of the markers and the ids to ROS
-        self.publish_marker_polygons(self.marker_corners, self.marker_ids)
+        # check if markers have been detected
+        if self.marker_ids is not None:
 
-        if self.blob_coordinates is not None:
-            
-            # normalize the blob coordinates
-            data = self.input_normalization(self.blob_coordinates)
-
-            # create message
-            self.blob_coordinates_msg = Point(data[0], data[1], 0)
-
-            # Publish blob coordinates
-            self.redBlobPub.publish(self.blob_coordinates_msg)
-
-            # print("object tracker node publishing coordinates : ", data)
-
-        else:
-            
-            # create empty message to indicate no object is being tracked
-            self.blob_coordinates_msg = Point(0, 0, 0)
-
-            # Publish blob coordinates
-            self.redBlobPub.publish(self.blob_coordinates_msg)
-
-            print("object tracker node publishing no coordinates")
+            # Publish the polygons of the edges of the markers and the ids
+            self.publish_marker_polygons()
 
 
 if __name__=='__main__':

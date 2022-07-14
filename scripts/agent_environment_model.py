@@ -176,6 +176,18 @@ class Agent:
         pass
 
 
+    def set_upright_position(self):
+        """
+        Sets NAO in upright position at the start
+        Inputs:
+        -TBD
+        Outputs:
+        -TBD
+        """
+
+        pass
+
+
 class Policy:
     """
     Class implementing ...
@@ -385,6 +397,19 @@ class Policy:
         """
 
         pass
+
+
+    def home_after_kick_ball(self):
+        """
+        Returns to home position after kicking the ball.
+        Inputs:
+        -...
+        Outputs:
+        - ...
+        """
+
+        pass
+
 
     def update_model(self, current_state_id, next_state_id, action_id, reward):
         """

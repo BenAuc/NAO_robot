@@ -5,9 +5,21 @@ joint_limits:
   safety: [0.05]
 
   # shoulder joints
-  left_shoulder:
+  right_hip:
     
-    # limits on shoulder joint degrees of freedom
-    pitch: [-2.0857, 2.0857]
-    roll: [-0.3142, 1.3265]
+    # limits on hip joint degrees of freedom
+    pitch: [-1.772, 0.485]
+    roll: [-0.738, 0.414]
+
+  # knee joint
+  right_knee:
+    
+    # limits on knee joint degrees of freedom
+    pitch: [-0.103, 2.120]
+
+  # ankle joint
+  right_ankle:
+    
+    # limits on ankle joint degrees of freedom
+    pitch: [-1.186, 0.932]
 

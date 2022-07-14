@@ -34,8 +34,16 @@ class PenaltyKick:
         self.frequency = 1 # Hz
         self.rate = rospy.Rate(self.frequency) # timing object
 
-        # define hip joint limits
-        # TODO by importing a .yaml file to the ROS server
+        # define joint limits
+        self.r_hip_pitch_limits = rospy.get_param("joint_limits/right_hip/pitch")
+        self.r_hip_roll_limits = rospy.get_param("joint_limits/right_hip/roll")
+        print("hip joints : ", self.r_hip_pitch_limits, self.r_hip_roll_limits)
+
+        self.r_ankle_pitch_limits = rospy.get_param("joint_limits/right_ankle/pitch")
+        self.r_knee_pitch_limits = rospy.get_param("joint_limits/right_knee/pitch")
+        print("hip joints : ", self.r_ankle_pitch_limits, self.r_knee_pitch_limits)
+
+        self.joint_limit_safety_factor = rospy.get_param("joint_limits/safety")[0]
 
         # define resolution of the model
         # this parameter gets passed on to the model of the agent and of the environment
@@ -47,7 +55,7 @@ class PenaltyKick:
         self.learned_policy = '/home/bio/bioinspired_ws/src/tutorial_5/data/learned_policy.pickle'
 
 
-        # define joints and stand-up resting position
+        # define joint states and stand-up resting position
         # TODO what exactly the resting position ought to be
         self.joint_names = ["HeadYaw", "HeadPitch", "LShoulderPitch", "LShoulderRoll", "LElbowYaw", "LElbowRoll", "LWristYaw",
                 "LHand", "LHipYawPitch", "LHipRoll", "LHipPitch", "LKneePitch", "LAnklePitch", "LAnkleRoll", "RHipYawPitch",
@@ -107,15 +115,19 @@ class PenaltyKick:
             # start computing behavior when the agent is in position
             if agent.readiness:
 
+                # call to method to set Nao in upright position
+                # TODO
+
                 # perform step
                 self.step()
+
                 # sleep to target frequency
                 self.rate.sleep()
 
 
     def step(self):
         """
-        Perform an iteration of shoulder control.
+        Perform an iteration of control.
         Inputs:
         -self
         Outputs:
