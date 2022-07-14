@@ -8,6 +8,7 @@ from cv_bridge import CvBridge, CvBridgeError
 import cv2
 import cv2.aruco as aruco
 import numpy as np
+import copy
 
 
 class ObjectTracker:
@@ -36,7 +37,8 @@ class ObjectTracker:
         rospy.Subscriber("/nao_robot/camera/top/camera/image_raw",Image,self.image_cb) # subscriber to NAO's camera stream
 
         # define topic publishers
-        self.markerPub = rospy.Publisher("/nao_robot/markers/polygon", PolygonStamped, queue_size=1)  # the polygon describing the outline of a marker + the marker ID
+        #self.markerPub = rospy.Publisher("/nao_robot/markers/polygon", PolygonStamped, queue_size=1)  # the polygon describing the outline of a marker + the marker ID
+        self.markerListPub = rospy.Publisher("/nao_robot/markerlist", PolygonArray, queue_size=1)  # the polygon describing the outline of a marker + the marker ID
 
         # define ArUco parameters (source: https://people.eng.unimelb.edu.au/pbeuchat/asclinic/software/workflow_aruco_detection.html)
         self.MARKER_SIZE = 0.018 # Marker size in meters
@@ -150,14 +152,17 @@ class ObjectTracker:
         -corners: 4 x 2 array of (x,y) pixel coordinates
         -ids: ArUco markers ids
         Outputs:
-        -publish the markers ids and coordinates
+        -publish a list of arrays of markers ids and (x,y) pixel coordinates as a PolygonArray() message
         """
 
         # Process any ArUco markers that were detected
-        if self.marker_ids is not None:          
+        if self.marker_ids is not None:
+
+            # create lists of polygon arrays
+            polygon_list_msg = PolygonArray()
 
             # Flatten ArUco IDs list to make it easier to work with
-            ids = self.marker_ids.flatten()
+            ids = copy.deepcopy(self.marker_ids.flatten())
 
             # Iterate over the markers detected
             for i_marker_id in range(len(ids)):
@@ -174,10 +179,19 @@ class ObjectTracker:
                 Point(x=corners_of_this_marker[2, 0], y=corners_of_this_marker[2, 1]),
                 Point(x=corners_of_this_marker[3, 0], y=corners_of_this_marker[3, 1])]
 
-                # Publish message
-                self.markerPub.publish(ps_message)
+                polygon_list_msg.polygons.append(ps_message)
+
+                # # Publish message
+                # self.markerPub.publish(ps_message)
+
+            # Publish message
+            self.markerListPub.publish(polygon_list_msg)
 
         else:
+
+            # create lists of polygon arrays
+            polygon_list_msg = PolygonArray()
+
             # Create empty message to indicate no marker is being tracked
             ps_message = PolygonStamped()
             ps_message.header.frame_id = str(0)
@@ -186,8 +200,11 @@ class ObjectTracker:
             Point(x=0, y=0),
             Point(x=0, y=0)]
 
+            polygon_list_msg.polygons.append(ps_message)
+
             # Publish message
-            self.markerPub.publish(ps_message)
+            # self.markerPub.publish(ps_message)
+            self.markerListPub.publish(polygon_list_msg)
         
 
     def run(self):

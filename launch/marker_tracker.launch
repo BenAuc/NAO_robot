@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<launch>
+    <!--include other launch files-->
+    <include file="$(find nao_bringup)/launch/nao_full_py.launch">
+    </include>
+
+    <include file="$(find nao_apps)/launch/tactile.launch">
+    </include>
+
+    <!--launch the marker tracker node-->
+    <node name="MarkerTrackerNode" pkg="tutorial_5" type="marker_tracker_node.py"
+	output="screen" respawn="true"/>
+
+</launch>
