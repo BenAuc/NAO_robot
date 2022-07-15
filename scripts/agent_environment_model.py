@@ -533,22 +533,23 @@ class Policy:
         # Update the transition probabilities and rewards for the two state features
         for state_id in range(self.nb_states):
             for action_id in range(self.nb_actions):
+                
                 # Translate the linear indices to actual coordinates on the grid
                 state_coords = self.environment.state_id_to_coords(state_id) # [row, col]
                 action_direction = self.environment.action_id_to_direction(action_id) # [yaw_dir, roll_dir]
 
                 # Predict the probability of the next state given the current state and action with the decision trees
-                pred_delta_feature1_prob = self.environment.predict_transition_probability(1, state_coords, action_direction)
-                pred_delta_feature2_prob = self.environment.predict_transition_probability(2, state_coords, action_direction)
-
+                pred_delta_feature1_prob = self.environment.predict_transition_probability(1, state_coords, action_id)
+                pred_delta_feature2_prob = self.environment.predict_transition_probability(2, state_coords, action_id)
+                
                 # Update transition probability
                 P = pred_delta_feature1_prob * pred_delta_feature2_prob
                 self.explored_actions[state_id][action_id]['P'] = P
 
                 # Predict the reward with the decision trees
-                R = self.environment.reward_tree.predict(np.hstack((state_coords, action_direction)))
+                R = self.environment.reward_tree.predict(np.hstack((state_coords, action_id)))
                 self.explored_actions[state_id][action_id]['R'] = R
-
+                
                 # Update the Q-value
                 self.explored_actions[state_id][action_id]['Q'] = R
                 for state_id_Q in range(self.nb_states):
@@ -639,15 +640,15 @@ class Environment:
 
         # Update the tree
         tree.fit(self.history, delta)
-        print('haha')
+        self.tree_dict[tree_id] = tree
 
-    def predict_transition_probability(self, tree_id, state_coords, action_direction):
+    def predict_transition_probability(self, tree_id, state_coords, action_id):
         """
         Predict the probability of transition from the current state to the next state.
         Inputs:
         - tree_id: int containing the id of the tree to update
         - state_coords: list containing the coordinates of the current state
-        - action_direction: list containing the direction vector of the action
+        - action_id: int containing the id of the action taken
         Outputs:
         - probability: float containing the probability of transition
         """
@@ -656,7 +657,7 @@ class Environment:
         tree = self.tree_dict[tree_id]
 
         # Predict the probability of transition
-        probability = tree.predict_proba(np.hstack((state_coords, action_direction)))[0][0]
+        probability = tree.predict_proba(np.hstack((state_coords, action_id)))
 
         return probability
 
