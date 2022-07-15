@@ -409,8 +409,8 @@ class Policy:
         delta_feature2 = delta_state_coords[1]
         
         # Update the trees for the two state features and the reward
-        self.environment.update_tree(1, action_direction, current_state_coords, delta_feature1) # yaw
-        self.environment.update_tree(2, action_direction, current_state_coords, delta_feature2) # roll
+        self.environment.update_tree(1, action_direction, current_state_coords, delta_feature1)  # feature 1
+        self.environment.update_tree(2, action_direction, current_state_coords, delta_feature2) # feature 2
         self.environment.update_tree(3, action_direction, current_state_coords, reward) # reward
 
         # Update the transition probabilities and rewards for the two state features
@@ -433,8 +433,9 @@ class Policy:
                 self.explored_actions[state_id][action_id]['R'] = R
 
                 # Update the Q-value
-
-                self.explored_actions[state_id][action_id]['Q'] += self.alpha * (R + self.gamma * np.max(self.explored_actions[state_id][action_id]['Q']) - self.explored_actions[state_id][action_id]['Q'])
+                self.explored_actions[state_id][action_id]['Q'] = R
+                for state_id_Q in range(self.nb_states):
+                    self.explored_actions[state_id][action_id]['Q'] += self.gamma * self.explored_actions[state_id_Q][action_id]['P'] * np.max(self.explored_actions[state_id_Q][:]['Q'])
 
 
 
