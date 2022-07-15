@@ -7,16 +7,8 @@
     <include file="$(find nao_apps)/launch/tactile.launch">
     </include>
 
-    <!-- Load parameters from yaml files containing waypoints to parameter server-->
-    <rosparam command="load"
-        file="$(find tutorial_5)/data/config/joint_limits.yaml"/>
-
     <!--launch the marker tracker node-->
     <node name="MarkerTrackerNode" pkg="tutorial_5" type="marker_tracker_node.py"
 	output="screen" respawn="true"/>
-
-    <!--launch the node computing the behavior of the football player-->
-    <!-- <node name="FootballPlayerNode" pkg="tutorial_5" type="football_player_node.py"
-	output="screen" respawn="true"/> -->
 
 </launch>
