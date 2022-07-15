@@ -26,6 +26,7 @@ import cv2.aruco as aruco
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn import tree
+import traceback
 
 
 """
@@ -657,7 +658,7 @@ class Environment:
         tree = self.tree_dict[tree_id]
 
         # Predict the probability of transition
-        probability = tree.predict_proba(np.hstack((state_coords, action_id)))
+        probability = tree.predict_proba(np.hstack((state_coords, action_id)).reshape(1, -1))
 
         return probability
 
@@ -771,5 +772,5 @@ if __name__=='__main__':
         
         print('Done!')
         
-    except:
-        pass
+    except Exception:
+        traceback.print_exc()
