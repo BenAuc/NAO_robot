@@ -130,7 +130,10 @@ class Agent:
 
         while True:
             # Step the policy
+            print("------------")
+            print("New step")
             action_id = self.step()
+            print("Action id: " + str(action_id))
 
             # Check if the agent has selected the 'kick' action
             if action_id == 2:
@@ -200,7 +203,7 @@ class Agent:
 
     def get_reward(self, action_id):
         
-        if action_id == 2:
+        if action_id != 2:
             button = 0
         else:
             button = input("Enter the key for the reward: ")
@@ -362,7 +365,7 @@ class Policy:
                     new_state[action_id]['is_valid'] = next_state_is_in_bounds
                 else:
                     new_state[action_id]['next_state'] = state_id # if the action is kick, the next state is the same as the current state
-                    new_state[action_id]['is_valid'] = False
+                    new_state[action_id]['is_valid'] = True
 
             # Append row to the list
             explored_actions.append(new_state)
@@ -390,7 +393,7 @@ class Policy:
         """
 
         # Whatever values you want to plot
-        value_list = self.environment.reward_grid.flatten()
+        value_list = np.zeros([self.num_rows, self.num_cols])
 
         draw_vals = True
         plt.rcParams['figure.dpi'] = 175
@@ -548,14 +551,21 @@ class Policy:
                 self.explored_actions[state_id][action_id]['P'] = P
 
                 # Predict the reward with the decision trees
-                R = self.environment.reward_tree.predict(np.hstack((state_coords, action_id)))
+                R = self.environment.reward_tree.predict(np.hstack((state_coords, action_id)).reshape(1, -1))
                 self.explored_actions[state_id][action_id]['R'] = R
                 
                 # Update the Q-value
-                self.explored_actions[state_id][action_id]['Q'] = R
+                sum_update = 0
                 for state_id_Q in range(self.nb_states):
-                    self.explored_actions[state_id][action_id]['Q'] += self.gamma * self.explored_actions[state_id_Q][action_id]['P'] * np.max(self.explored_actions[state_id_Q][:]['Q'])
+                    list_Qs = []
+                    for action_id_Q in range(self.nb_actions):
+                        list_Qs.append(self.explored_actions[state_id_Q][action_id_Q]['Q'])
+                    sum_update += self.explored_actions[state_id_Q][action_id]['P'] * int(np.max(list_Qs))
 
+                self.explored_actions[state_id][action_id]['Q'] = R + self.gamma * sum_update
+                
+
+                
 
 
 
@@ -634,6 +644,7 @@ class Environment:
         # Select the delta and extend it with the new one
         delta = self.delta_dict[tree_id]
         delta = np.append(delta, new_delta)
+        self.delta_dict[tree_id] = delta
 
         # Add the state-action pair to the history (only the first time)
         if tree_id == 1:
@@ -658,7 +669,7 @@ class Environment:
         tree = self.tree_dict[tree_id]
 
         # Predict the probability of transition
-        probability = tree.predict_proba(np.hstack((state_coords, action_id)).reshape(1, -1))
+        probability = tree.predict_proba(np.hstack((state_coords, action_id)).reshape(1, -1))[0][0]
 
         return probability
 
@@ -736,8 +747,6 @@ class Environment:
             next_state_id = current_state_id
             is_in_bounds = False
 
-            return next_state_id, is_in_bounds
-
         # Check if the next state lies within the boundaries of the environment
         is_in_bounds = (0 <= next_state_coords[0] < self.num_rows) and (0 <= next_state_coords[1] < self.num_cols)
 
@@ -767,8 +776,8 @@ if __name__=='__main__':
             goalkeeper_x=goalkeeper_x,
             goal_lims=goal_lims
             )
-        agent.policy.print_explored_actions()
-        agent.policy.plot()
+        # agent.policy.print_explored_actions()
+        # agent.policy.plot()
         
         print('Done!')
         
