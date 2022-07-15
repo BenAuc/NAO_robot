@@ -12,6 +12,7 @@
 
 # Commented out by Diego to be able to develop from home
 
+"""
 from hmac import new
 import rospy
 from geometry_msgs.msg import Point, PolygonStamped
@@ -20,6 +21,7 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 import cv2
 import cv2.aruco as aruco
+"""
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -48,12 +50,12 @@ class Agent:
     -...
     """
 
-    def __init__(self, hip_joint_resolution, hip_joint_start_position, goal_keeper_resolution):
+    def __init__(self, hip_joint_resolution, hip_joint_start_position, goalkeeper_resolution, goalkeeper_x, goal_lims):
 
         # SOME ACLARATIONS:
-        # - the state space is composed by two features: hip_joint_position and goal_keeper_position
+        # - the state space is composed by two features: hip_joint_position and goalkeeper_position
         # - feature 1 (hip_joint_position) is quantized with hip_joint_resolution between hip_roll_lims[0] and hip_roll_lims[1]
-        # - feature 2 (ball_x) is quantized with goal_keeper_resolution between 0 and self.cam_x_max
+        # - feature 2 (goalkeeper_x) is quantized with goalkeeper_resolution between the left post of the goal and the right post of the goal
         # - the knee_pitch_lims are only used later for robot movement
         # - the action space is composed by three actions: move-in, move-out, and kick
 
@@ -65,36 +67,42 @@ class Agent:
             }
 
         # define joint limits
-        self.r_hip_pitch_limits = rospy.get_param("joint_limits/right_hip/pitch")
-        self.r_hip_roll_limits = rospy.get_param("joint_limits/right_hip/roll")
+        use_physical_limits = False
+        if use_physical_limits:
+            self.r_hip_pitch_limits = rospy.get_param("joint_limits/right_hip/pitch")
+            self.r_hip_roll_limits = rospy.get_param("joint_limits/right_hip/roll")
 
-        self.r_ankle_pitch_limits = rospy.get_param("joint_limits/right_ankle/pitch")
-        self.r_knee_pitch_limits = rospy.get_param("joint_limits/right_knee/pitch")
+            self.r_ankle_pitch_limits = rospy.get_param("joint_limits/right_ankle/pitch")
+            self.r_knee_pitch_limits = rospy.get_param("joint_limits/right_knee/pitch")
 
-        self.joint_limit_safety_factor = rospy.get_param("joint_limits/safety")[0]
+            self.joint_limit_safety_factor = rospy.get_param("joint_limits/safety")[0]
+        else:
+            # Use empirical values for the joint limits
+            self.r_hip_roll_limits = [-1, 1]
+            self.r_knee_pitch_limits = [-1, 1]
 
         # define camera resolution
         self.cam_y_max = 240 - 1 # camera resolution
         self.cam_x_max = 320 - 1 # camera resolution
 
-        # Declare the two features in the state-space: the leg displacement and the ball x position
-        self.feature1 = np.linspace(self.r_hip_roll_limits[0], self.r_hip_roll_limits[1], hip_joint_resolution)
-        self.feature2 = np.linspace(0, self.cam_x_max, goal_keeper_resolution)
+        # Declare the two features in the state-space: the leg displacement and the goalkeeper x position
+        self.feature1 = np.linspace(self.r_hip_roll_limits[0], self.r_hip_roll_limits[1], hip_joint_resolution) # State feature 1: position of the hip joint = leg displacement
+        self.feature2 = np.linspace(goal_lims[0], goal_lims[1], goalkeeper_resolution) # State feature 2: position of the goalkeeper x coordinate
 
         # Initialize the actions that the robot can perform
         self.HipRollDiscretized = np.linspace(self.r_hip_roll_limits[0], self.r_hip_roll_limits[1], hip_joint_resolution) # used for actions 'move-in' and 'move-out', thus resolution_leg
-        self.KneePitchDiscretized = np.linspace(self.r_knee_pitch_limits[0], self.r_knee_pitch_limits[1], 2)        # used for action 'kick', thus resolution = 2 (knee goes from back to front)
+        self.KneePitchDiscretized = np.linspace(self.r_knee_pitch_limits[0], self.r_knee_pitch_limits[1], 2) # used for action 'kick', thus resolution = 2 (knee goes from back to front)
 
         # variable containing the environment the policy is about
-        self.environment = Environment(hip_joint_resolution, goal_keeper_resolution, self.action_dictionary)
+        self.environment = Environment(hip_joint_resolution, goalkeeper_resolution, self.action_dictionary)
         
         # variable containing the policy the agent has so far learned
         self.policy = Policy(environment=self.environment)
 
         # compute the linear id of the agent's current state in the policy table 
         # based on the hip joint position given as start position vector
-        # and the position of goal keeper assumed to be in the middle of the field of view
-        current_state_coords = self.quantize_state(hip_joint_start_position, int(self.cam_x_max / 2))
+        # and the position of goalkeeper
+        current_state_coords = self.quantize_state(hip_joint_start_position, goalkeeper_x)
         self.current_state_id = self.environment.state_coords_to_state_id(current_state_coords)
 
         # flag to indicate that the agent is in position and ready to kick a goal
@@ -105,35 +113,29 @@ class Agent:
         # self.jointStiffnessPub = rospy.Publisher("joint_stiffness", JointState, queue_size=1)
         # self.jointPub = rospy.Publisher("joint_angles",JointAnglesWithSpeed,queue_size=10) # Allow joint control
 
-    def quantize_state(self, hip_joint_position, ball_x):
+    def quantize_state(self, hip_joint_position, goalkeeper_x):
         """
-        Quantize the state hip_joint_position and the ball_x to find the coordinates of the state in the grid environment
+        Quantize the state hip_joint_position and the goalkeeper_x to find the coordinates of the state in the grid environment
         Inputs:
         - hip_joint_position: float containing the position of the hip joint
-        - ball_x: float containing the x-coordinate of the ball
+        - goalkeeper_x: float containing the x-coordinate of the ball
         Outputs:
         - state_coords: list containing the coordinates of the state on the grid environment
         """
 
-        # quantize the state hip_joint_position and the ball_x
+        # quantize the state hip_joint_position and the goalkeeper_x
         state_coords = [0, 0]
         state_coords[0] = np.argmin(np.abs(self.feature1 - hip_joint_position))
-        state_coords[1] = np.argmin(np.abs(self.feature2 - ball_x))
+        state_coords[1] = np.argmin(np.abs(self.feature2 - goalkeeper_x))
 
         return state_coords
 
-    def step(self, goal_keeper_position, goal_position):
+    def step(self):
         """
-        Perform step.
-        Inputs:
-        -goal_keeper_position: numpy array 1x2 of pixel coordinates (x,y) of goal keeper in camera field of view
-        -goal_position: numpy array 2x2 of pixel coordinates (x,y) of edges of goal in camera field of view
+        Perform step of the agent in the environment: choose an action, execute it, and update the policy
         Outputs:
         -computes next state of the agent
         """
-        # TODO: the arguments goal_keeper_position, goal_position still need to be integrated into the computations
-        # we basically don't control the state of the position of goal keeper and goal
-        # so we would need to recompute the current_state each time based on input from NAO's camera & Aruco markers
 
         # request computation of the id of the action to take given the current state
         action_id = self.policy.select_next_action(self.current_state_id)
@@ -714,26 +716,20 @@ if __name__=='__main__':
     try:
         print('Starting...')
 
-        # Initialize the environment variables
-        RESOLUTION_LEG, RESOLUTION_BALL = 5, 5 # Resolution for the quantization of the leg displacement and ball x coordinate
-        HIP_ROLL_LIMS = [-np.pi/2, np.pi/2] # Limits of the hip joint roll
-        KNEE_PITCH_LIMS = [-np.pi/2, np.pi/2] # Limits of the knee joint pitch
-        LEG_DISPLACEMENT_LIMS = [-np.pi/2, np.pi/2] # Limits of the leg displacement
-        CAM_X_LIMS = [1, 200] # Limits of the camera x coordinate
+        # Initialize the environment resolution for the 2 state features
+        HIP_JOINT_RESOLUTION, GOALKEEPER_RESOLUTION = 5, 5 # Resolution for the quantization of the leg displacement and goalkeeper x coordinate
 
         # TODO: Here we should actually pass the measured values of the robot and the blob
-        leg_displacement = 1.0 # Displacement of the leg
-        ball_x = 1.0 # x coordinate of the ball
+        hip_joint_start_position = 0.0 # Displacement of the leg
+        goalkeeper_x = 1.0 # x coordinate of the goalkeeper (in the camera frame) -> measured as center of the red blob
+        goal_lims = [0.0, 3.0] # x coordinates of the goal posts (in the camera frame) -> measured with the AruCo markers
 
         # Instantiate the agent, which also instantiates the policy and the environment
-        agent = Agent(resolution_leg=RESOLUTION_LEG, 
-            resolution_ball=RESOLUTION_BALL, 
-            leg_displacement_lims=LEG_DISPLACEMENT_LIMS,
-            cam_x_lims=CAM_X_LIMS,
-            leg_displacement=leg_displacement, 
-            ball_x=ball_x,
-            hip_roll_lims=HIP_ROLL_LIMS, 
-            knee_pitch_lims=KNEE_PITCH_LIMS
+        agent = Agent(hip_joint_resolution=HIP_JOINT_RESOLUTION, 
+            hip_joint_start_position=hip_joint_start_position,
+            goalkeeper_resolution=GOALKEEPER_RESOLUTION, 
+            goalkeeper_x=goalkeeper_x,
+            goal_lims=goal_lims
             )
         agent.policy.print_explored_actions()
         agent.policy.plot()
