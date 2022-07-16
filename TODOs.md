@@ -14,7 +14,7 @@ In PenaltyKick class of FootPlayer node:
    - DONE: `goal_lims`: x coordinates of the goal posts (in the camera frame) -> measured with the AruCo markers, same as previously
  
  - Find empirical limits of the hip roll (for finding the leg displacement)
- - DONE: Find empirical limits of the knee (for kicking the ball) -> see method of PenaltyKick class "kick_ball()"
+ - DONE: Find empirical limits of the knee (for kicking the ball) -> see method of PenaltyKick class "kick_ball()". I don't see the need for empirical limits beyond this method.
    ![image](https://user-images.githubusercontent.com/95912004/179242566-0e656b6b-f539-45b6-b618-8b5994ef113b.png)
  - DONE: Create function for upright posture: we could use posture proxies for that (http://doc.aldebaran.com/2-1/naoqi/motion/alrobotposture.html) or simply `Agent.set_joint_angles()` -> proxies don't offer a standing position on one leg. Upright position set in run() method of PenaltyKick class
  - Write `Agent.execute_action()` to execute the movement on the robot, according to the selected action id
