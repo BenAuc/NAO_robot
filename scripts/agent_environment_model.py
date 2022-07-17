@@ -25,7 +25,7 @@ import cv2.aruco as aruco
 
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn import tree
+#from sklearn import tree
 import traceback
 import pickle
 
@@ -52,7 +52,7 @@ class Agent:
     -...
     """
 
-    def __init__(self, hip_joint_resolution, hip_joint_start_position, goalkeeper_resolution, goalkeeper_x, goal_lims):
+    def __init__(self, hip_joint_resolution, hip_joint_start_position, goalkeeper_resolution, goalkeeper_x, goal_lims, r_hip_roll_limits, r_knee_pitch_limits):
 
         # SOME ACLARATIONS:
         # - the state space is composed by two features: hip_joint_position and goalkeeper_position
@@ -68,32 +68,17 @@ class Agent:
             2: 'kick'
             }
 
-        # define joint limits
-        use_physical_limits = False
-        if use_physical_limits:
-            self.r_hip_pitch_limits = rospy.get_param("joint_limits/right_hip/pitch")
-            self.r_hip_roll_limits = rospy.get_param("joint_limits/right_hip/roll")
-
-            self.r_ankle_pitch_limits = rospy.get_param("joint_limits/right_ankle/pitch")
-            self.r_knee_pitch_limits = rospy.get_param("joint_limits/right_knee/pitch")
-
-            self.joint_limit_safety_factor = rospy.get_param("joint_limits/safety")[0]
-        else:
-            # Use empirical values for the joint limits
-            self.r_hip_roll_limits = [-1, 1]
-            self.r_knee_pitch_limits = [-1, 1]
-
         # define camera resolution
         self.cam_y_max = 240 - 1 # camera resolution
         self.cam_x_max = 320 - 1 # camera resolution
 
         # Declare the two features in the state-space: the leg displacement and the goalkeeper x position
-        self.feature1 = np.linspace(self.r_hip_roll_limits[0], self.r_hip_roll_limits[1], hip_joint_resolution) # State feature 1: position of the hip joint = leg displacement
+        self.feature1 = np.linspace(r_hip_roll_limits[0], r_hip_roll_limits[1], hip_joint_resolution) # State feature 1: position of the hip joint = leg displacement
         self.feature2 = np.linspace(goal_lims[0], goal_lims[1], goalkeeper_resolution) # State feature 2: position of the goalkeeper x coordinate
 
         # Initialize the actions that the robot can perform
-        self.HipRollDiscretized = np.linspace(self.r_hip_roll_limits[0], self.r_hip_roll_limits[1], hip_joint_resolution) # used for actions 'move-in' and 'move-out', thus resolution_leg
-        self.KneePitchDiscretized = np.linspace(self.r_knee_pitch_limits[0], self.r_knee_pitch_limits[1], 2) # used for action 'kick', thus resolution = 2 (knee goes from back to front)
+        self.HipRollDiscretized = np.linspace(r_hip_roll_limits[0], r_hip_roll_limits[1], hip_joint_resolution) # used for actions 'move-in' and 'move-out', thus resolution_leg
+        self.KneePitchDiscretized = np.linspace(r_knee_pitch_limits[0], r_knee_pitch_limits[1], 2) # used for action 'kick', thus resolution = 2 (knee goes from back to front)
         
         # variable containing the environment the policy is about
         self.environment = Environment(hip_joint_resolution, goalkeeper_resolution, self.action_dictionary)
@@ -201,7 +186,6 @@ class Agent:
         action_direction = self.environment.action_id_to_direction(action_id) # [hip_movement, knee_movement]
 
         # TODO
-        
 
     def get_reward(self, action_id):
         
