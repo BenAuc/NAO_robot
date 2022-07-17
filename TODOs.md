@@ -2,7 +2,7 @@
 
 General:
 
--install sklearn, see small instructions in the folder "notes" of the ros package
+-install sklearn, see short instructions in the folder "notes" of the ros package
 
 In PenaltyKick class of FootPlayer node:
 
