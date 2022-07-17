@@ -2,7 +2,7 @@
 
 General:
 
--install sklearn, see short instructions in the folder "notes" of the ros package
+-DONE: install sklearn, see short instructions in the folder "notes" of the ros package
 
 In PenaltyKick class of FootPlayer node:
 
@@ -20,7 +20,7 @@ In PenaltyKick class of FootPlayer node:
  - DONE: Find empirical limits of the knee (for kicking the ball) -> see method of PenaltyKick class "kick_ball()". I don't see the need for empirical limits beyond this method.
    ![image](https://user-images.githubusercontent.com/95912004/179242566-0e656b6b-f539-45b6-b618-8b5994ef113b.png)
  - DONE: Create function for upright posture: we could use posture proxies for that (http://doc.aldebaran.com/2-1/naoqi/motion/alrobotposture.html) or simply `Agent.set_joint_angles()` -> proxies don't offer a standing position on one leg. Upright position set in run() method of PenaltyKick class
- - Write `Agent.execute_action()` to execute the movement on the robot, according to the selected action id
+ - DONE: Write `Agent.execute_action()` to execute the movement on the robot, according to the selected action id
    ![image](https://user-images.githubusercontent.com/95912004/179284462-84d2415f-b95c-41af-8de0-e80e63fb5ca1.png)
  - Connect `self.hip_joint_position` with a subscriber to the corresponding topic
    ![image](https://user-images.githubusercontent.com/95912004/179284753-c56603d3-9f0e-4cc5-b987-3deb09f5f8de.png)
