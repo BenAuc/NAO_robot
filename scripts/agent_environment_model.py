@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python
 
 #################################################################
@@ -12,7 +13,7 @@
 
 # Commented out by Diego to be able to develop from home
 
-"""
+
 from hmac import new
 import rospy
 from geometry_msgs.msg import Point, PolygonStamped
@@ -21,13 +22,10 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 import cv2
 import cv2.aruco as aruco
-"""
-
 import numpy as np
 import matplotlib.pyplot as plt
-#from sklearn import tree
+from sklearn import tree
 import traceback
-import pickle
 
 
 """
@@ -101,7 +99,7 @@ class Agent:
         # Keep track of the reward
         self.reward_total = 0
         self.reward = []
-
+    
         # create topic publishers
         # self.jointStiffnessPub = rospy.Publisher("joint_stiffness", JointState, queue_size=1)
         # self.jointPub = rospy.Publisher("joint_angles",JointAnglesWithSpeed,queue_size=10) # Allow joint control
@@ -184,8 +182,21 @@ class Agent:
             
         # Get the direction of the action
         action_direction = self.environment.action_id_to_direction(action_id) # [hip_movement, knee_movement]
+        self.a1 += action_direction[0]
+        self.a2 += action_direction[1]
 
-        # TODO
+        print('a1: ', self.a1)
+        print('a2: ', self.a2)
+
+        #Get action for NAO execution
+        hip_roll = self.HipRollDiscretized[self.a1]
+        knee_pitch = self.HipRollDiscretized[self.a2]
+
+        self.set_joint_angles(hip_roll, "RHipRoll")
+        rospy.sleep(0.2)
+        self.set_joint_angles(knee_pitch, "RKneePitch")
+        rospy.sleep(0.2)
+
 
     def get_reward(self, action_id):
         
@@ -220,29 +231,26 @@ class Agent:
         -triggers the motion
         """
 
-        """
-        Commented out by Diego to be able to develop from home
         joint_angles_to_set = JointAnglesWithSpeed()
         joint_angles_to_set.joint_names.append(joint_name) # each joint has a specific name, look into the joint_state topic or google
         joint_angles_to_set.joint_angles.append(head_angle) # the joint values have to be in the same order as the names!!
         joint_angles_to_set.relative = False # if true you can increment positions
         joint_angles_to_set.speed = 0.1 # keep this low if you can
         self.jointPub.publish(joint_angles_to_set)
-        """
-        joint_angles_to_set = 0 # DELETE THIS LINE
-
-        return joint_angles_to_set
 
 
-    def load_policy(self):
+    def load_policy(self,path):
         """
         Upload the policy learned during a prior training
-        Inputs: (Thought it would be easy to set a hardcoded path)
+        Inputs:
+        -path: path to the .pickle file containing the policy
         Outputs:
         -self.policy: store the policy in the class variable
         """
+        
         path_to_policy = '/home/bio/bioinspired_ws/src/tutorial_5/policy/environment.obj'
         self.policy= pickle.load(open(path_to_policy, 'rb'))
+
 
     def save_policy(self,policy):
         """
@@ -376,7 +384,6 @@ class Policy:
 
         # Whatever values you want to plot
         value_list = np.zeros([self.num_rows, self.num_cols])
-
         draw_vals = True
         plt.rcParams['figure.dpi'] = 175
         plt.rcParams.update({'axes.edgecolor': (0.32,0.36,0.38)})
@@ -741,11 +748,13 @@ if __name__=='__main__':
 
     # instantiate class and start loop function
     try:
+
         print('Starting...')
 
         # Initialize the environment resolution for the 2 state features
         HIP_JOINT_RESOLUTION, GOALKEEPER_RESOLUTION = 5, 5 # Resolution for the quantization of the leg displacement and goalkeeper x coordinate
-
+        r_hip_roll_limits = [-1, 1]
+        r_knee_pitch_limits = [-1, 1]
         # TODO: Here we should actually pass the measured values of the robot and the blob
         hip_joint_start_position = 0.0 # Displacement of the leg (= hip roll) at the moment when we start the RL algorithm)
         goalkeeper_x = 1.0 # x coordinate of the goalkeeper (in the camera frame) -> measured as center of the red blob
@@ -756,7 +765,9 @@ if __name__=='__main__':
             hip_joint_start_position=hip_joint_start_position,
             goalkeeper_resolution=GOALKEEPER_RESOLUTION, 
             goalkeeper_x=goalkeeper_x,
-            goal_lims=goal_lims
+            goal_lims=goal_lims,
+            r_hip_roll_limits = r_hip_roll_limits,
+            r_knee_pitch_limits= r_knee_pitch_limits
             )
         # agent.policy.print_explored_actions()
         # agent.policy.plot()

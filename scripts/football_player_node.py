@@ -9,7 +9,6 @@
 #################################################################
 
 from audioop import avg
-import this
 import rospy
 from agent_environment_model import Agent, Policy
 from std_msgs.msg import String, Header
@@ -55,9 +54,11 @@ class PenaltyKick:
         self.learned_policy = '/home/bio/bioinspired_ws/src/tutorial_5/data/learned_policy.pickle'
 
         # define joint limits
-        use_physical_limits = True
+        use_physical_limits = False
         if use_physical_limits:
+            print('Start')
             self.r_hip_pitch_limits = rospy.get_param("joint_limits/right_hip/pitch")
+            print(self.r_hip_pitch_limits)
             self.r_hip_roll_limits = rospy.get_param("joint_limits/right_hip/roll")
 
             self.r_ankle_pitch_limits = rospy.get_param("joint_limits/right_ankle/pitch")
@@ -280,15 +281,15 @@ class PenaltyKick:
         while not rospy.is_shutdown():
             
             # FOR TESTING PURPOSES UNCOMMENT
-            # if not self.in_resting_position:
-            #     print("setting jionts in resting position")
-            #     print("please wait...")  
-            #     rospy.sleep(4)
-            #     self.in_resting_position = self.set_joint_position(self.joint_names_rest, self.joint_rest_position)
-            #     print("all joint states have been configured -> ready for kicking")
-            #     rospy.sleep(1.5)
+            if not self.in_resting_position:
+                 print("setting jionts in resting position")
+                 print("please wait...")  
+                 rospy.sleep(4)
+                 self.in_resting_position = self.set_joint_position(self.joint_names_rest, self.joint_rest_position)
+                 print("all joint states have been configured -> ready for kicking")
+                 rospy.sleep(1.5)
 
-            # self.kick_ball()
+            self.kick_ball()
 
             # if goal keeper 
             # # and posts of the goal have been detected
@@ -296,7 +297,7 @@ class PenaltyKick:
 
                 # set in upright position
                 self.set_upright_position()
-
+                print('In position')
                 # Initialize the environment resolution for the 2 state features
                 HIP_JOINT_RESOLUTION, GOALKEEPER_RESOLUTION = 5, 5 # Resolution for the quantization of the leg displacement and goalkeeper x coordinate
                 hip_joint_start_position = np.random.rand() * (self.r_hip_roll_limits[1] - self.r_hip_roll_limits[0]) + self.r_hip_roll_limits[0]
