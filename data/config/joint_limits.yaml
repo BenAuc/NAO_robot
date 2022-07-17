@@ -1,0 +1,25 @@
+### safety limits on angular positions of joints ###
+
+joint_limits:
+  # safety factor
+  safety: [0.05]
+
+  # shoulder joints
+  right_hip:
+    
+    # limits on hip joint degrees of freedom
+    pitch: [-1.772, 0.485]
+    roll: [-0.738, 0.414]
+
+  # knee joint
+  right_knee:
+    
+    # limits on knee joint degrees of freedom
+    pitch: [-0.103, 2.120]
+
+  # ankle joint
+  right_ankle:
+    
+    # limits on ankle joint degrees of freedom
+    pitch: [-1.186, 0.932]
+
