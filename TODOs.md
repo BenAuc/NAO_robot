@@ -1,9 +1,12 @@
 # TODOs:
 
+General:
+
+-install sklearn, see small instructions in the folder "notes" of the ros package
+
 In PenaltyKick class of FootPlayer node:
 
-- Connect a push button to each of all possible rewards
-- Connect a push button to get the Nao started and start kicking
+- Connect a push button to set the flat "agentReadiness" to True and start iterating. The status of this flag is checked in penaltyKick.run()
 
 ## agent_environment_model.py
 
