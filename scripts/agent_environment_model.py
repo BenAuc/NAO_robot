@@ -27,6 +27,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn import tree
 import traceback
+import pickle
 
 
 """
@@ -200,6 +201,7 @@ class Agent:
         action_direction = self.environment.action_id_to_direction(action_id) # [hip_movement, knee_movement]
 
         # TODO
+        
 
     def get_reward(self, action_id):
         
@@ -236,7 +238,6 @@ class Agent:
 
         """
         Commented out by Diego to be able to develop from home
-
         joint_angles_to_set = JointAnglesWithSpeed()
         joint_angles_to_set.joint_names.append(joint_name) # each joint has a specific name, look into the joint_state topic or google
         joint_angles_to_set.joint_angles.append(head_angle) # the joint values have to be in the same order as the names!!
@@ -249,28 +250,25 @@ class Agent:
         return joint_angles_to_set
 
 
-    def load_policy(self,path):
+    def load_policy(self):
         """
         Upload the policy learned during a prior training
-        Inputs:
-        -path: path to the .pickle file containing the policy
+        Inputs: (Thought it would be easy to set a hardcoded path)
         Outputs:
         -self.policy: store the policy in the class variable
         """
+        path_to_policy = '/home/bio/bioinspired_ws/src/tutorial_5/policy/environment.obj'
+        self.policy= pickle.load(open(path_to_policy, 'rb'))
 
-        pass
-
-
-    def save_policy(self,path):
+    def save_policy(self,policy):
         """
         Upload the policy learned during a prior training
         Inputs:
-        -path: path to the .pickle file containing the policy
-        Outputs:
-        -self.policy: store the policy in the class variable
+        policy to be stored
         """
 
-        pass
+        path_to_policy = '/home/bio/bioinspired_ws/src/tutorial_5/policy/environment.obj'
+        pickle.dump(policy, open(path_to_policy, 'wb'))
 
 
     def set_upright_position(self):
