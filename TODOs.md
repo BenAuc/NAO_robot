@@ -4,11 +4,20 @@ General:
 
 -DONE: install sklearn, see short instructions in the folder "notes" of the ros package
 
-In PenaltyKick class of FootPlayer node:
+## football_player_node.py
+
+In PenaltyKick class:
 
 - Connect a push button to set the flat "agentReadiness" to True and start iterating. The status of this flag is checked in penaltyKick.run()
+- test the new logic where only the node sends motor command
 
 ## agent_environment_model.py
+
+In Agent class:
+
+- add menu in Agent.get_reward() to tell the experimenter what his option are + add while loop as long as no valid option is selected by the experimenter
+- clean ...model.py of code involving motor commands
+- implement a method to upload a hard-coded environment and another method to train on this
 
  - DONE: Connect the parameters that are used to initialize the Agent model with the measured values: 
    ![image](https://user-images.githubusercontent.com/95912004/179242012-02b5853a-09b2-40d8-b005-08867183844c.png)
@@ -22,7 +31,7 @@ In PenaltyKick class of FootPlayer node:
  - DONE: Create function for upright posture: we could use posture proxies for that (http://doc.aldebaran.com/2-1/naoqi/motion/alrobotposture.html) or simply `Agent.set_joint_angles()` -> proxies don't offer a standing position on one leg. Upright position set in run() method of PenaltyKick class
  - DONE: Write `Agent.execute_action()` to execute the movement on the robot, according to the selected action id
    ![image](https://user-images.githubusercontent.com/95912004/179284462-84d2415f-b95c-41af-8de0-e80e63fb5ca1.png)
- - Connect `self.hip_joint_position` with a subscriber to the corresponding topic
+ - DONE: Connect `self.hip_joint_position` with a subscriber to the corresponding topic
    ![image](https://user-images.githubusercontent.com/95912004/179284753-c56603d3-9f0e-4cc5-b987-3deb09f5f8de.png)
    On the image, we see a portion of the step function. After the call to `execute_action(action_id)` (see previous point), we expect the hip joint position to change.
    Thus, we fetch it from the rostopic and compute our new state. The first line on this image is hardcoded to "fake" a new measurement, since we don't know the real value yet.
