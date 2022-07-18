@@ -9,7 +9,6 @@
 #################################################################
 
 from audioop import avg
-import this
 import rospy
 from agent_environment_model import Agent, Policy
 from std_msgs.msg import String, Header
@@ -37,7 +36,7 @@ class PenaltyKick:
         # define resolution of the model
         # this parameter gets passed on to the model of the agent and of the environment
         # it sets the number of bins into which the range of the degrees of freedom are split
-        self.resolution = 5
+        self.HIP_JOINT_RESOLUTION, self.GOALKEEPER_RESOLUTION = 5, 5 # Resolution for the quantization of the leg displacement and goalkeeper x coordinate
 
         # define goal keeper parameters
         # initialize to -1 position (x,y) of goal keeper and goal edges
@@ -52,12 +51,14 @@ class PenaltyKick:
 
         # define where the learned policy is located
         # this policy is the output of another script which performed reinforcement learning
-        self.learned_policy = '/home/bio/bioinspired_ws/src/tutorial_5/data/learned_policy.pickle'
+        self.path_to_learned_policy = '/home/bio/bioinspired_ws/src/tutorial_5/data/learned_policy.pickle'
 
         # define joint limits
-        use_physical_limits = True
+        use_physical_limits = False
         if use_physical_limits:
+            print('Start')
             self.r_hip_pitch_limits = rospy.get_param("joint_limits/right_hip/pitch")
+            print(self.r_hip_pitch_limits)
             self.r_hip_roll_limits = rospy.get_param("joint_limits/right_hip/roll")
 
             self.r_ankle_pitch_limits = rospy.get_param("joint_limits/right_ankle/pitch")
@@ -69,24 +70,34 @@ class PenaltyKick:
             self.r_hip_roll_limits = [-1, 1]
             self.r_knee_pitch_limits = [-1, 1]
 
-        # define joint states and stand-up resting position
-        self.in_resting_position = False
+        # define joints 
+        self.joint_names_state_variable = ["RHipRoll"]        
+        self.joint_ids_state_variable = 15 # index of this joint as published by the topic  
+        self.hip_roll_start_position = np.random.rand() * (
+            self.r_hip_roll_limits[1] - self.r_hip_roll_limits[0]) + self.r_hip_roll_limits[0] # random hip roll start position
+ 
         self.joint_names_rest = ["HeadYaw", "HeadPitch", "LShoulderPitch", "LShoulderRoll", "LElbowYaw", 
         "LElbowRoll", "LWristYaw", "LHand", "LHipYawPitch", "LHipRoll", 
         "LHipPitch", "LKneePitch", "LAnklePitch", "LAnkleRoll", "RHipYawPitch",
         "RHipRoll", "RHipPitch", "RKneePitch", "RAnklePitch", "RAnkleRoll", 
-        "RShoulderPitch", "RShoulderRoll", "RElbowYaw", "RElbowRoll", "RWristYaw", "RHand"]
+        "RShoulderPitch", "RShoulderRoll", "RElbowYaw", "RElbowRoll", "RWristYaw", "RHand"] # all joint names
 
         self.joint_rest_position = [-0.01535, -0.1917, 1.51247, 0.8656, -1.1965, 
         -0.3895, 0.06898, 0.2983, -0.17023, 0.459751, 
         -0.09043, -0.090548, 0.090465, 0.00881, -0.17023, 
-        0.299668, 0.20034, -0.088930, 0.390548, 0.13043,
-        1.53557, 0.27338, 1.18420, 0.38814, 0.11194, 0.30239]
+        self.hip_roll_start_position, 0.20034, -0.088930, 0.390548, 0.13043,
+        1.53557, 0.27338, 1.18420, 0.38814, 0.11194, 0.30239] # joint states for start, upright position
 
+        # joint and joint states involved during kicking
         self.joint_names_kick = ["RHipPitch"]
         self.joint_position_kick = [-0.55034]
         self.joint_position_kick_home = [0.20034]
         self.joint_position_kick_before = [0.44034]
+
+        # Flags 
+        self.train_mode = True # to differentiate between train and forward mode
+        self.agentIsReady = True # to indicate Nao is ready to start moving
+        self.in_resting_position = False # to indicate whether now is in upright position or not
 
         # create topic subscribers
         rospy.Subscriber("key", String, self.key_cb)
@@ -100,6 +111,9 @@ class PenaltyKick:
 
         # initialize class variables
         self.stiffness = False  
+        self.joint_names = [] 
+        self.joint_angles = []
+        self.joint_velocities = []
 
 
     def kick_ball(self):
@@ -278,57 +292,70 @@ class PenaltyKick:
         """
 
         while not rospy.is_shutdown():
+
+            if self.agentIsReady:
+
+                # set Nao in upright position
+                ###############################
+                # FOR TESTING PURPOSES UNCOMMENT
+                # WARNING: HOLD NAO REAL TIGHT IN THE AIR WHEN IT MOVES TO UPRIGHT POSITION
+                ###############################
+                # if not self.in_resting_position:
+                #     print("setting jionts in resting position")
+                #     print("please wait...")  
+                #     rospy.sleep(4)
+                #     self.in_resting_position = self.set_joint_position(self.joint_names_rest, self.joint_rest_position)
+                #     print("all joint states have been configured -> ready for kicking")
+                #     rospy.sleep(1.5)
             
-            # FOR TESTING PURPOSES UNCOMMENT
-            # if not self.in_resting_position:
-            #     print("setting jionts in resting position")
-            #     print("please wait...")  
-            #     rospy.sleep(4)
-            #     self.in_resting_position = self.set_joint_position(self.joint_names_rest, self.joint_rest_position)
-            #     print("all joint states have been configured -> ready for kicking")
-            #     rospy.sleep(1.5)
+                # if goal keeper and posts of the goal have been detected
+                if self.goal_keeper_x_position >= 0 and self.goal_left_post_x_position >= 0 and self.goal_right_post_x_position >= 0:
 
-            # self.kick_ball()
+                    print("agent is being instantiated with following parameters")
+                    print("*************")
+                    print("self.HIP_JOINT_RESOLUTION, self.hip_roll_start_position, self.GOALKEEPER_RESOLUTION, self.goal_keeper_x_position, [self.goal_left_post_x_position, self.goal_right_post_x_position]")
+                    print(self.HIP_JOINT_RESOLUTION, self.hip_roll_start_position, self.GOALKEEPER_RESOLUTION, 
+                        self.goal_keeper_x_position, [self.goal_left_post_x_position, self.goal_right_post_x_position])
 
-            # if goal keeper 
-            # # and posts of the goal have been detected
-            if self.goal_keeper_x_position >= 0 and self.goal_left_post_x_position >= 0 and self.goal_right_post_x_position >= 0:
+                    # instantiate the agent
+                    agent = Agent(hip_joint_resolution = self.HIP_JOINT_RESOLUTION, 
+                        hip_joint_start_position = self.hip_roll_start_position,
+                        goalkeeper_resolution = self.GOALKEEPER_RESOLUTION, 
+                        goalkeeper_x = self.goal_keeper_x_position,
+                        goal_lims = [self.goal_left_post_x_position, self.goal_right_post_x_position],
+                        r_hip_roll_limits = self.r_hip_roll_limits, 
+                        r_knee_pitch_limits = self.r_knee_pitch_limits
+                        )
 
-                # set in upright position
-                self.set_upright_position()
+                    # load the policy learned during training
+                    if not self.train_mode:
+                        agent.load_policy(penalty_kick.path_to_learned_policy)
 
-                # Initialize the environment resolution for the 2 state features
-                HIP_JOINT_RESOLUTION, GOALKEEPER_RESOLUTION = 5, 5 # Resolution for the quantization of the leg displacement and goalkeeper x coordinate
-                hip_joint_start_position = np.random.rand() * (self.r_hip_roll_limits[1] - self.r_hip_roll_limits[0]) + self.r_hip_roll_limits[0]
+                    # if the button was pushed to start
+                    while self.agentIsReady:
 
-                print("agent is being instantiated")
-                print("parameters : ", HIP_JOINT_RESOLUTION, hip_joint_start_position, GOALKEEPER_RESOLUTION, 
-                    self.goal_keeper_x_position, [self.goal_left_post_x_position, self.goal_right_post_x_position])
+                        # read state variable stade
+                        current_hip_roll = self.joint_angles[self.joint_ids_state_variable]
 
-                # instantiate the agent
-                agent = Agent(hip_joint_resolution = HIP_JOINT_RESOLUTION, 
-                    hip_joint_start_position = hip_joint_start_position,
-                    goalkeeper_resolution = GOALKEEPER_RESOLUTION, 
-                    goalkeeper_x = self.goal_keeper_x_position,
-                    goal_lims = [self.goal_left_post_x_position, self.goal_right_post_x_position],
-                    r_hip_roll_limits = self.r_hip_roll_limits, 
-                    r_knee_pitch_limits = self.r_knee_pitch_limits
-                    )
+                        # perform step
+                        hip_roll, action_id, previous_state_id = agent.step(current_hip_roll)
 
-                # load the policy learned during training
-                #agent.load_policy(penalty_kick.learned_policy)
+                        # compute action
+                        # either kick the ball
+                        if action_id == 2:
+                            self.kick_ball()
 
-                # if the button was pushed to start
-                while agent.readiness:
+                        # or update state variable (hip roll)
+                        else:
+                            self.set_joint_position(self.joint_names_state_variable, hip_roll)
+                            rospy.sleep(0.5)
 
-                    # call to method to set Nao in upright position
-                    # TODO
+                        ## If in train mode, train the agent
+                        if self.train_mode:
+                            agent.train(action_id, previous_state_id)
 
-                    # perform step
-                    self.step(agent)
-
-                # sleep to target frequency
-                self.rate.sleep()
+                        # sleep to target frequency
+                        self.rate.sleep()
 
 
     def step(self, agent):

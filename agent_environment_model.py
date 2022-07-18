@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python
 
 #################################################################
@@ -12,7 +13,7 @@
 
 # Commented out by Diego to be able to develop from home
 
-"""
+
 from hmac import new
 import rospy
 from geometry_msgs.msg import Point, PolygonStamped
@@ -21,12 +22,11 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 import cv2
 import cv2.aruco as aruco
-"""
-
 import numpy as np
 import matplotlib.pyplot as plt
-#from sklearn import tree
+from sklearn import tree
 import traceback
+import pickle
 
 
 """
@@ -44,11 +44,14 @@ Dictionary of RL terminology:
 
 class Agent:
     """
-    Class implementing ...
+    Class implementing the agent that learns a policy as it navigates an environment and collect rewards
     @Inputs:
-    -...
+    -resolution of state variables
+    -range of state variables
+    -position of goal posts in field of view
     @Outputs:
-    -...
+    -instantiate an object Environment
+    -instantiate an object Policy
     """
 
     def __init__(self, hip_joint_resolution, hip_joint_start_position, goalkeeper_resolution, goalkeeper_x, goal_lims, r_hip_roll_limits, r_knee_pitch_limits):
@@ -100,13 +103,15 @@ class Agent:
         # Keep track of the reward
         self.reward_total = 0
         self.reward = []
-
+        self.a1 = current_state_coords[0]
+        self.a2 = 0
         # create topic publishers
         # self.jointStiffnessPub = rospy.Publisher("joint_stiffness", JointState, queue_size=1)
         # self.jointPub = rospy.Publisher("joint_angles",JointAnglesWithSpeed,queue_size=10) # Allow joint control
         
         # Start main loop
         self.main_loop()
+
 
     def main_loop(self):
         """
@@ -123,6 +128,7 @@ class Agent:
             # Check if the agent has selected the 'kick' action
             if action_id == 2:
                 break
+
 
     def quantize_state(self, hip_joint_position, goalkeeper_x):
         """
@@ -141,10 +147,77 @@ class Agent:
 
         return state_coords
 
-    def step(self):
+        
+##########################
+
+
+    # def step(self):
+    #     """
+    #     Perform step of the agent in the environment: choose an action, execute the action on the robot, 
+    #     measure the new state, collect the reward, and update the policy (if we are in train mode)
+    #     Outputs:
+    #     - action_id: Return the selected action id
+    #     """
+
+    #     ## Choose an action
+    #     action_id = self.policy.select_next_action(self.current_state_id) # request computation of the id of the action to take given the current state
+
+    #     ## Execute the action on the robot
+    #     self.execute_action(action_id)
+
+    #     ## Measure the new state
+    #     self.hip_joint_position += 0.2 # TODO: get the hip joint position from the robot (using the joint_angles topic)
+    #     next_state_coords = self.quantize_state(self.hip_joint_position, self.goalkeeper_x)
+    #     next_state_id = self.environment.state_coords_to_state_id(next_state_coords)
+
+    #     ## If in train mode, collect the reward and update the policy model
+    #     if self.train_mode:
+    #         # collect the reward
+    #         reward = self.get_reward(action_id)
+    #         self.reward.append(reward)
+    #         self.reward_total += reward
+    #         # update the policy
+    #         self.policy.update_model(self.current_state_id, next_state_id, action_id, reward)
+
+    #     ## Update the current state
+    #     self.current_state_id = next_state_id
+
+    #     return action_id
+
+    # def execute_action(self, action_id):
+    #     """
+    #     Execute the action on the robot
+    #     Inputs:
+    #     - action_id: int containing the id of the action to execute
+    #     """
+            
+    #     # Get the direction of the action
+    #     action_direction = self.environment.action_id_to_direction(action_id) # [hip_movement, knee_movement]
+    #     self.a1 += action_direction[0]
+    #     self.a2 += action_direction[1]
+
+    #     print('a1: ', self.a1)
+    #     print('a2: ', self.a2)
+
+    #     #Get action for NAO execution
+    #     hip_roll = self.HipRollDiscretized[self.a1]
+    #     knee_pitch = self.HipRollDiscretized[self.a2]
+
+    #     self.set_joint_angles(hip_roll, "RHipRoll")
+    #     rospy.sleep(0.2)
+    #     self.set_joint_angles(knee_pitch, "RKneePitch")
+    #     rospy.sleep(0.2)
+
+
+##########################
+
+
+    def step(self, current_state_variables):
         """
         Perform step of the agent in the environment: choose an action, execute the action on the robot, 
         measure the new state, collect the reward, and update the policy (if we are in train mode)
+        Inputs:
+        - current_state_variables: current state of state variable
         Outputs:
         - action_id: Return the selected action id
         """
@@ -152,47 +225,67 @@ class Agent:
         ## Choose an action
         action_id = self.policy.select_next_action(self.current_state_id) # request computation of the id of the action to take given the current state
 
-        ## Execute the action on the robot
-        self.execute_action(action_id)
+        # Get the direction of the action
+        action_direction = self.environment.action_id_to_direction(action_id) # [hip_movement, knee_movement]
+        self.a1 = current_state_variables + action_direction[0]
+        self.a2 += action_direction[1]
+
+        print('a1: ', self.a1)
+        print('a2: ', self.a2)
+
+        #Get action for NAO execution
+        hip_roll = self.HipRollDiscretized[self.a1]
+        knee_pitch = self.HipRollDiscretized[self.a2]
 
         ## Measure the new state
-        self.hip_joint_position += 0.2 # TODO: get the hip joint position from the robot (using the joint_angles topic)
+        self.hip_joint_position = hip_roll # TODO: get the hip joint position from the robot (using the joint_angles topic)
         next_state_coords = self.quantize_state(self.hip_joint_position, self.goalkeeper_x)
         next_state_id = self.environment.state_coords_to_state_id(next_state_coords)
 
-        ## If in train mode, collect the reward and update the policy model
-        if self.train_mode:
-            # collect the reward
-            reward = self.get_reward(action_id)
-            self.reward.append(reward)
-            self.reward_total += reward
-            # update the policy
-            self.policy.update_model(self.current_state_id, next_state_id, action_id, reward)
+        ## temporary storage of state id to return it
+        previous_state_id = self.current_state_id
 
         ## Update the current state
         self.current_state_id = next_state_id
 
-        return action_id
+        return hip_roll, action_id, previous_state_id
 
-    def execute_action(self, action_id):
+
+    def train(self, action_id, previous_state_id):
         """
-        Execute the action on the robot
+        Collect reward and update the model of the policy
         Inputs:
-        - action_id: int containing the id of the action to execute
+        - action_id: int containing the id of the action that just got executed
+        - previous_state_id: int containing the id of the state on the basis of which the action was selected
         """
-            
-        # Get the direction of the action
-        action_direction = self.environment.action_id_to_direction(action_id) # [hip_movement, knee_movement]
 
-        # TODO
+        ## If in train mode, collect the reward and update the policy model
+
+        # collect the reward
+        reward = self.get_reward(action_id) # pause and wait for keyboard input
+        self.reward.append(reward)
+        self.reward_total += reward
+
+        # update the policy
+        self.policy.update_model(previous_state_id, self.current_state_id, action_id, reward)
+
+        return 
+
 
     def get_reward(self, action_id):
+        """
+        Collect reward from a keyboard stroke from the experimenter
+        Inputs:
+        - action_id: int containing the id of the action that just got executed
+        """
         
-        if action_id != 2:
-            button = 0
-        else:
-            button = input("Enter the key for the reward: ")
-        
+        # if action_id != 2:
+        #     button = 0
+        # else:
+        #     button = input("Enter the key for the reward: ")
+
+        button = input("Enter the key for the reward: ")
+    
         """
         For each button push set the reward
         """
@@ -219,19 +312,12 @@ class Agent:
         -triggers the motion
         """
 
-        """
-        Commented out by Diego to be able to develop from home
-
         joint_angles_to_set = JointAnglesWithSpeed()
         joint_angles_to_set.joint_names.append(joint_name) # each joint has a specific name, look into the joint_state topic or google
         joint_angles_to_set.joint_angles.append(head_angle) # the joint values have to be in the same order as the names!!
         joint_angles_to_set.relative = False # if true you can increment positions
         joint_angles_to_set.speed = 0.1 # keep this low if you can
         self.jointPub.publish(joint_angles_to_set)
-        """
-        joint_angles_to_set = 0 # DELETE THIS LINE
-
-        return joint_angles_to_set
 
 
     def load_policy(self,path):
@@ -242,20 +328,20 @@ class Agent:
         Outputs:
         -self.policy: store the policy in the class variable
         """
+        
+        path_to_policy = '/home/bio/bioinspired_ws/src/tutorial_5/policy/environment.obj'
+        self.policy= pickle.load(open(path_to_policy, 'rb'))
 
-        pass
 
-
-    def save_policy(self,path):
+    def save_policy(self,policy):
         """
         Upload the policy learned during a prior training
         Inputs:
-        -path: path to the .pickle file containing the policy
-        Outputs:
-        -self.policy: store the policy in the class variable
+        policy to be stored
         """
 
-        pass
+        path_to_policy = '/home/bio/bioinspired_ws/src/tutorial_5/policy/environment.obj'
+        pickle.dump(policy, open(path_to_policy, 'wb'))
 
 
     def set_upright_position(self):
@@ -356,7 +442,8 @@ class Policy:
             explored_actions.append(new_state)
 
         return explored_actions
-        
+
+
     def print_explored_actions(self):
         """
         Print the explored_actions array
@@ -372,6 +459,7 @@ class Policy:
                 is_valid = self.explored_actions[s][a]['is_valid']
                 print('State: (ID: {}, 0-based coordinates: [{}, {}]), Action: {}, Next State: {}, Next State Reward: {}, Visited: {}, Valid Transition: {}\n'.format(s, x, y, a_name, next_state, reward, visited, is_valid))
 
+
     def plot(self):
         """
         Plot the policy
@@ -379,7 +467,6 @@ class Policy:
 
         # Whatever values you want to plot
         value_list = np.zeros([self.num_rows, self.num_cols])
-
         draw_vals = True
         plt.rcParams['figure.dpi'] = 175
         plt.rcParams.update({'axes.edgecolor': (0.32,0.36,0.38)})
@@ -413,7 +500,7 @@ class Policy:
 
     def select_next_action(self, state):
         """
-        Handles ...
+        Select next action of the agent given current state.
         Inputs:
         - state: int containing the id of the current state
         Outputs:
@@ -467,30 +554,6 @@ class Policy:
                 next_action_id = np.random.choice(np.arange(0, self.nb_actions)[np.where(Q_list != -1)])
 
         return next_action_id
-
-    
-    def kick_ball(self):
-        """
-        Trigger kicking motion.
-        Inputs:
-        -...
-        Outputs:
-        - ...
-        """
-
-        pass
-
-
-    def home_after_kick_ball(self):
-        """
-        Returns to home position after kicking the ball.
-        Inputs:
-        -...
-        Outputs:
-        - ...
-        """
-
-        pass
 
 
     def update_model(self, current_state_id, next_state_id, action_id, reward):
@@ -550,17 +613,14 @@ class Policy:
                 self.explored_actions[state_id][action_id]['Q'] = R + self.gamma * sum_update
                 
 
-                
-
-
-
 class Environment:
     """
-    Class implementing ...
+    Class implementing the environment navigated by the agent
     @Inputs:
-    -...
+    -resolution of the state variables
+    -dictionary of possible actions
     @Outputs:
-    -...
+    -instantiate a Decision Tree Classifier
     """
 
     def __init__(self, resolution_leg, resolution_goalkeeper, action_dictionary):
@@ -612,7 +672,6 @@ class Environment:
         }
 
 
-
     def update_tree(self, tree_id, action_id, state_coords, new_delta):
         """
         Update the decision tree with ID tree_id with the action action_id and the current state current_state_id.
@@ -638,6 +697,7 @@ class Environment:
         # Update the tree
         tree.fit(self.history, delta)
         self.tree_dict[tree_id] = tree
+
 
     def predict_transition_probability(self, tree_id, state_coords, action_id):
         """
@@ -672,6 +732,7 @@ class Environment:
         state_coords = np.unravel_index(state_id, (self.num_rows, self.num_cols))
 
         return state_coords
+
 
     def state_coords_to_state_id(self, state_coords):
         """
@@ -744,11 +805,13 @@ if __name__=='__main__':
 
     # instantiate class and start loop function
     try:
+
         print('Starting...')
 
         # Initialize the environment resolution for the 2 state features
         HIP_JOINT_RESOLUTION, GOALKEEPER_RESOLUTION = 5, 5 # Resolution for the quantization of the leg displacement and goalkeeper x coordinate
-
+        r_hip_roll_limits = [-1, 1]
+        r_knee_pitch_limits = [-1, 1]
         # TODO: Here we should actually pass the measured values of the robot and the blob
         hip_joint_start_position = 0.0 # Displacement of the leg (= hip roll) at the moment when we start the RL algorithm)
         goalkeeper_x = 1.0 # x coordinate of the goalkeeper (in the camera frame) -> measured as center of the red blob
@@ -759,7 +822,9 @@ if __name__=='__main__':
             hip_joint_start_position=hip_joint_start_position,
             goalkeeper_resolution=GOALKEEPER_RESOLUTION, 
             goalkeeper_x=goalkeeper_x,
-            goal_lims=goal_lims
+            goal_lims=goal_lims,
+            r_hip_roll_limits = r_hip_roll_limits,
+            r_knee_pitch_limits= r_knee_pitch_limits
             )
         # agent.policy.print_explored_actions()
         # agent.policy.plot()
