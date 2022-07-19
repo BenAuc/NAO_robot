@@ -79,6 +79,7 @@ class Agent:
 
         # Initialize the actions that the robot can perform
         self.HipRollDiscretized = np.linspace(r_hip_roll_limits[0], r_hip_roll_limits[1], hip_joint_resolution) # used for actions 'move-in' and 'move-out', thus resolution_leg
+        print("linsapce on hip roll : ", self.HipRollDiscretized)
         self.KneePitchDiscretized = np.linspace(r_knee_pitch_limits[0], r_knee_pitch_limits[1], 2) # used for action 'kick', thus resolution = 2 (knee goes from back to front)
         
         # variable containing the environment the policy is about
@@ -109,8 +110,8 @@ class Agent:
         # self.jointStiffnessPub = rospy.Publisher("joint_stiffness", JointState, queue_size=1)
         # self.jointPub = rospy.Publisher("joint_angles",JointAnglesWithSpeed,queue_size=10) # Allow joint control
         
-        # Start main loop
-        self.main_loop()
+        # # Start main loop
+        # self.main_loop()
 
 
     def main_loop(self):
@@ -234,8 +235,8 @@ class Agent:
         print('a2: ', self.a2)
 
         #Get action for NAO execution
-        hip_roll = self.HipRollDiscretized[self.a1]
-        knee_pitch = self.HipRollDiscretized[self.a2]
+        hip_roll = [self.HipRollDiscretized[self.a1]]
+        knee_pitch = [self.HipRollDiscretized[self.a2]]
 
         ## Measure the new state
         self.hip_joint_position = hip_roll # TODO: get the hip joint position from the robot (using the joint_angles topic)
@@ -248,7 +249,7 @@ class Agent:
         ## Update the current state
         self.current_state_id = next_state_id
 
-        return hip_roll, action_id, previous_state_id
+        return hip_roll, knee_pitch, action_id, previous_state_id
 
 
     def train(self, action_id, previous_state_id):
@@ -279,35 +280,33 @@ class Agent:
         - action_id: int containing the id of the action that just got executed
         """
         
-        # if action_id != 2:
-        #     button = 0
-        # else:
-        #     button = input("Enter the key for the reward: ")
-
-        print("The key for reward:\n 0:default reward value \n 1:reward for falling \n 2:reward for scoring a goal \n 3:reward for getting blocked by goalkeeper \n 4:reward for missing")
-        button = input("Enter the key for the reward: ")
-        
-        """
-        For each button push set the reward
-        """
-        while True:
-            if button == 0:
-                reward = self.environment.default_R # default reward value
-                break
-            elif button == 1:
-                reward = self.environment.fall_R # reward for falling
-                break
-            elif button == 2:
-                reward = self.environment.score_R # reward for scoring a goal
-                break
-            elif button == 3:
-                reward = self.environment.block_R # reward for getting the ball blocked by the goalkeeper
-                break
-            elif button == 4:
-                reward = self.environment.miss_R  # reward for missing the goal
-                break
-            else:
-                print("Enter a valid button for the reward again")
+        if action_id != 2:
+            button = 0
+            reward = self.environment.default_R
+        else:
+            print("The key for reward:\n 0:default reward value \n 1:reward for falling \n 2:reward for scoring a goal \n 3:reward for getting blocked by goalkeeper \n 4:reward for missing")
+            button = input("Enter the key for the reward: ")
+            
+            
+            # For each button push register the corresponding reward
+            while True:
+                if button == 0:
+                    reward = self.environment.default_R # default reward value
+                    break
+                elif button == 1:
+                    reward = self.environment.fall_R # reward for falling
+                    break
+                elif button == 2:
+                    reward = self.environment.score_R # reward for scoring a goal
+                    break
+                elif button == 3:
+                    reward = self.environment.block_R # reward for getting the ball blocked by the goalkeeper
+                    break
+                elif button == 4:
+                    reward = self.environment.miss_R  # reward for missing the goal
+                    break
+                else:
+                    print("Enter a valid button for the reward again")
             
         return reward
 
@@ -351,18 +350,6 @@ class Agent:
 
         path_to_policy = '/home/bio/bioinspired_ws/src/tutorial_5/policy/environment.obj'
         pickle.dump(policy, open(path_to_policy, 'wb'))
-
-
-    def set_upright_position(self):
-        """
-        Sets NAO in upright position at the start
-        Inputs:
-        -TBD
-        Outputs:
-        -TBD
-        """
-
-        pass
 
 
 class Policy:

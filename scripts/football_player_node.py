@@ -36,7 +36,7 @@ class PenaltyKick:
         # define resolution of the model
         # this parameter gets passed on to the model of the agent and of the environment
         # it sets the number of bins into which the range of the degrees of freedom are split
-        self.HIP_JOINT_RESOLUTION, self.GOALKEEPER_RESOLUTION = 5, 5 # Resolution for the quantization of the leg displacement and goalkeeper x coordinate
+        self.HIP_JOINT_RESOLUTION, self.GOALKEEPER_RESOLUTION = 8, 8 # Resolution for the quantization of the leg displacement and goalkeeper x coordinate
 
         # define goal keeper parameters
         # initialize to -1 position (x,y) of goal keeper and goal edges
@@ -54,27 +54,29 @@ class PenaltyKick:
         self.path_to_learned_policy = '/home/bio/bioinspired_ws/src/tutorial_5/data/learned_policy.pickle'
 
         # define joint limits
-        use_physical_limits = False
+        use_physical_limits = True
         if use_physical_limits:
             print('Start')
-            self.r_hip_pitch_limits = rospy.get_param("joint_limits/right_hip/pitch")
-            print(self.r_hip_pitch_limits)
-            self.r_hip_roll_limits = rospy.get_param("joint_limits/right_hip/roll")
-
-            self.r_ankle_pitch_limits = rospy.get_param("joint_limits/right_ankle/pitch")
-            self.r_knee_pitch_limits = rospy.get_param("joint_limits/right_knee/pitch")
-
             self.joint_limit_safety_factor = rospy.get_param("joint_limits/safety")[0]
+
+            self.r_hip_pitch_limits = self.joint_limit_safety_factor * np.array(rospy.get_param("joint_limits/right_hip/pitch"))
+            self.r_hip_roll_limits = self.joint_limit_safety_factor * np.array(rospy.get_param("joint_limits/right_hip/roll"))
+
+            self.r_ankle_pitch_limits = self.joint_limit_safety_factor * np.array(rospy.get_param("joint_limits/right_ankle/pitch"))
+            self.r_knee_pitch_limits = self.joint_limit_safety_factor * np.array(rospy.get_param("joint_limits/right_knee/pitch"))
+
         else:
             # Use empirical values for the joint limits
-            self.r_hip_roll_limits = [-1, 1]
-            self.r_knee_pitch_limits = [-1, 1]
+            self.r_hip_roll_limits = [-0.5, 0.4]
+            self.r_knee_pitch_limits = [-1.2, 0.4]
+            self.joint_limit_safety_factor = rospy.get_param("joint_limits/safety")[0]
 
         # define joints 
         self.joint_names_state_variable = ["RHipRoll"]        
-        self.joint_ids_state_variable = 15 # index of this joint as published by the topic  
+        self.joint_ids_state_variable = 15 # index of this joint as published by the topic 
         self.hip_roll_start_position = np.random.rand() * (
             self.r_hip_roll_limits[1] - self.r_hip_roll_limits[0]) + self.r_hip_roll_limits[0] # random hip roll start position
+        print("hip roll start position : ", self.hip_roll_start_position) 
  
         self.joint_names_rest = ["HeadYaw", "HeadPitch", "LShoulderPitch", "LShoulderRoll", "LElbowYaw", 
         "LElbowRoll", "LWristYaw", "LHand", "LHipYawPitch", "LHipRoll", 
@@ -98,6 +100,8 @@ class PenaltyKick:
         self.train_mode = True # to differentiate between train and forward mode
         self.agentIsReady = False # to indicate Nao is ready to start moving
         self.in_resting_position = False # to indicate whether now is in upright position or not
+        self.toggle = False # used to prevent the flag from immediately toggling when button is released following a press
+        self.agent_exist = False # to make sure only one agent is instatiated
 
         # create topic subscribers
         rospy.Subscriber("key", String, self.key_cb)
@@ -114,6 +118,118 @@ class PenaltyKick:
         self.joint_names = [] 
         self.joint_angles = []
         self.joint_velocities = []
+
+
+    def run(self):
+        """
+        Main loop of class.
+        Inputs:
+        -self
+        Outputs:
+        -runs the step function.
+        """
+
+        while not rospy.is_shutdown():
+
+            # if the agent is set to ready (push of button 1)
+            if self.agentIsReady:
+
+                # set Nao in upright position
+                ###############################
+                # FOR TESTING PURPOSES UNCOMMENT
+                # WARNING: HOLD NAO REAL TIGHT IN THE AIR WHEN IT MOVES TO UPRIGHT POSITION
+                ###############################
+
+                if not self.in_resting_position:
+                    print("setting joints in upright position")
+                    print("please wait...")  
+                    self.in_resting_position = self.set_joint_position(self.joint_names_rest, self.joint_rest_position)
+                    print("all joint states have been configured -> ready for kicking")
+                    rospy.sleep(1)
+            
+                # if goal keeper and posts of the goal have been detected UNCOMMENT IF NECESSARY
+                # if self.goal_keeper_x_position >= 0 and self.goal_left_post_x_position >= 0 and self.goal_right_post_x_position >= 0:
+                if True:
+
+                    # if no agent has been instantiated so far
+                    if not self.agent_exist:
+
+                        print("*************")
+                        print("agent is being instantiated with following parameters")
+                        print("self.HIP_JOINT_RESOLUTION, self.hip_roll_start_position, self.GOALKEEPER_RESOLUTION, self.goal_keeper_x_position, [self.goal_left_post_x_position, self.goal_right_post_x_position]")
+                        print(self.HIP_JOINT_RESOLUTION, self.hip_roll_start_position, self.GOALKEEPER_RESOLUTION, 
+                        self.goal_keeper_x_position, [self.goal_left_post_x_position, self.goal_right_post_x_position])
+
+                        # instantiate the agent
+                        agent = Agent(hip_joint_resolution = self.HIP_JOINT_RESOLUTION, 
+                            hip_joint_start_position = self.hip_roll_start_position,
+                            goalkeeper_resolution = self.GOALKEEPER_RESOLUTION, 
+                            goalkeeper_x = self.goal_keeper_x_position,
+                            goal_lims = [self.goal_left_post_x_position, self.goal_right_post_x_position],
+                            r_hip_roll_limits = self.r_hip_roll_limits, 
+                            r_knee_pitch_limits = self.r_knee_pitch_limits
+                            )
+
+                        # register the creation of the agent
+                        self.agent_exist = True
+
+                    # COMMENT IF NECESSARY
+                    rospy.sleep(0.5)
+
+                    print("*** iteration ***")
+
+                    # load the policy learned during training
+                    if not self.train_mode:
+                        agent.load_policy(penalty_kick.path_to_learned_policy)
+
+                    # as long as the agent is set to ready (push of button 1)
+                    while self.agentIsReady:
+
+                        self.step(agent)
+
+                        # sleep to target frequency
+                        rospy.sleep(0.2)
+                        print("*** iteration ***")
+                        # self.rate.sleep()
+
+                    # sleep to target frequency
+                    rospy.sleep(1)
+
+
+    def step(self, agent):
+        """
+        Perform an iteration of control.
+        Inputs:
+        -self
+        Outputs:
+        -sets the joint states.
+        """
+            
+        # read state variable stade
+        current_hip_roll = self.joint_angles[self.joint_ids_state_variable]
+        print("current_hip_roll :", current_hip_roll)
+
+        # the agent does an iteration on its state-action space
+        hip_roll, knee_pitch, action_id, previous_state_id = agent.step(current_hip_roll)
+        print("call to agent.step()")
+        print("hip_roll, knee_pitch, action_id, previous_state_id : ", hip_roll, knee_pitch, action_id, previous_state_id)
+
+        # compute action
+        # either kick the ball
+        if action_id == 2:
+            self.kick_ball()
+
+        # or update state variable (hip roll)
+        else:
+            print("call to set_joint_position(self.joint_names_state_variable, hip_roll) :")
+            print(self.joint_names_state_variable, hip_roll)
+
+            self.set_joint_position(self.joint_names_state_variable, hip_roll)
+            rospy.sleep(0.5)
+
+        ## If in train mode, train the agent
+        if self.train_mode:
+            agent.train(action_id, previous_state_id)
 
 
     def kick_ball(self):
@@ -160,7 +276,9 @@ class PenaltyKick:
         """
         Set all joints in desired position.
         Inputs:
-        -None
+        -joint_names: python array with the strings of joint names
+        - joint_position: python array with the ints of joint states
+        - speed: ints of joint speed
         Outputs:
         -Call to method set_joint_angles()
         """
@@ -171,7 +289,7 @@ class PenaltyKick:
         # go through all joints and set at desired position
         for i_joint in range(len(joint_names)):
             self.set_joint_angles(joint_position[i_joint], joint_names[i_joint], speed=0.1)
-            rospy.sleep(0.25)
+            rospy.sleep(0.05)
 
         return True
 
@@ -199,6 +317,13 @@ class PenaltyKick:
 
 
     def joints_cb(self,data):
+        """
+        Handle inconing joint state message.
+        Inputs:
+        -data: joint state message
+        Outputs:
+        -save to class variables
+        """
         #rospy.loginfo("joint states "+str(data.name)+str(data.position))
         # store current joint information in class variables
         self.joint_names = data.name 
@@ -208,6 +333,13 @@ class PenaltyKick:
 
     # sets the stiffness for all joints.
     def set_stiffness(self,value):
+        """
+        Set whole body stiffness.
+        Inputs:
+        -value: boolean whether the body should be stiff or not stiff
+        Outputs:
+        -Publish joint states
+        """
         if value == True:
             service_name = '/body_stiffness/enable'
         elif value == False:
@@ -220,15 +352,31 @@ class PenaltyKick:
 
 
     def touch_cb(self,data):
-        # Check which head button has been pressed. To trigger events on a button praise, raise
-        # the corresponding flags.
+        """
+        Handling incoming button state message and trigger action or raise corresponding flags.
+        Inputs:
+        -value: boolean whether the body should be stiff or not stiff
+        Outputs:
+        -Publish joint states
+        """
 
         rospy.loginfo("touch button: "+str(data.button)+" state: "+str(data.state))
 
         # setting the readiness to true with a touch button
-        if data.button == 1 and data.state == 1:
+        if not self.agentIsReady and data.button == 1 and data.state == 1:
+            print("***** agent is set to ready *****")
             self.agentIsReady = True
+            self.toggle = True
+
+        # setting the readiness to true with a touch button
+        elif self.agentIsReady and data.button == 1 and data.state == 0:
+            if self.toggle:
+                self.toggle = False
+            else:
+                print("***** agent is set to not ready *****")
+                self.agentIsReady = False
             
+
     def aruco_marker_parser(self, data):
         """
         Handle incoming PolygonArray() message with positions of detected Aruco markers.
@@ -285,97 +433,6 @@ class PenaltyKick:
                 self.goal_right_post_x_position = int(np.mean(x_coordinates))
 
 
-    def run(self):
-        """
-        Main loop of class.
-        Inputs:
-        -self
-        Outputs:
-        -runs the step function.
-        """
-
-        while not rospy.is_shutdown():
-
-            if self.agentIsReady:
-
-                # set Nao in upright position
-                ###############################
-                # FOR TESTING PURPOSES UNCOMMENT
-                # WARNING: HOLD NAO REAL TIGHT IN THE AIR WHEN IT MOVES TO UPRIGHT POSITION
-                ###############################
-                # if not self.in_resting_position:
-                #     print("setting jionts in resting position")
-                #     print("please wait...")  
-                #     rospy.sleep(4)
-                #     self.in_resting_position = self.set_joint_position(self.joint_names_rest, self.joint_rest_position)
-                #     print("all joint states have been configured -> ready for kicking")
-                #     rospy.sleep(1.5)
-            
-                # if goal keeper and posts of the goal have been detected
-                if self.goal_keeper_x_position >= 0 and self.goal_left_post_x_position >= 0 and self.goal_right_post_x_position >= 0:
-
-                    print("agent is being instantiated with following parameters")
-                    print("*************")
-                    print("self.HIP_JOINT_RESOLUTION, self.hip_roll_start_position, self.GOALKEEPER_RESOLUTION, self.goal_keeper_x_position, [self.goal_left_post_x_position, self.goal_right_post_x_position]")
-                    print(self.HIP_JOINT_RESOLUTION, self.hip_roll_start_position, self.GOALKEEPER_RESOLUTION, 
-                        self.goal_keeper_x_position, [self.goal_left_post_x_position, self.goal_right_post_x_position])
-
-                    # instantiate the agent
-                    agent = Agent(hip_joint_resolution = self.HIP_JOINT_RESOLUTION, 
-                        hip_joint_start_position = self.hip_roll_start_position,
-                        goalkeeper_resolution = self.GOALKEEPER_RESOLUTION, 
-                        goalkeeper_x = self.goal_keeper_x_position,
-                        goal_lims = [self.goal_left_post_x_position, self.goal_right_post_x_position],
-                        r_hip_roll_limits = self.r_hip_roll_limits, 
-                        r_knee_pitch_limits = self.r_knee_pitch_limits
-                        )
-
-                    # load the policy learned during training
-                    if not self.train_mode:
-                        agent.load_policy(penalty_kick.path_to_learned_policy)
-
-                    # if the button was pushed to start
-                    while self.agentIsReady:
-
-                        # read state variable stade
-                        current_hip_roll = self.joint_angles[self.joint_ids_state_variable]
-
-                        # perform step
-                        hip_roll, action_id, previous_state_id = agent.step(current_hip_roll)
-
-                        # compute action
-                        # either kick the ball
-                        if action_id == 2:
-                            self.kick_ball()
-
-                        # or update state variable (hip roll)
-                        else:
-                            self.set_joint_position(self.joint_names_state_variable, hip_roll)
-                            rospy.sleep(0.5)
-
-                        ## If in train mode, train the agent
-                        if self.train_mode:
-                            agent.train(action_id, previous_state_id)
-
-                        # sleep to target frequency
-                        self.rate.sleep()
-
-
-    def step(self, agent):
-        """
-        Perform an iteration of control.
-        Inputs:
-        -self
-        Outputs:
-        -sets the joint states.
-        """
-            
-        ### to be completed ###
-
-        # the agent does an iteration on its state-action space based on identified positions of goal and goal keepers
-        agent.step()
-
-
 if __name__=='__main__':
 
     #initialize the node and set name
@@ -388,7 +445,7 @@ if __name__=='__main__':
         penalty_kick = PenaltyKick()
 
         # start the loop
-        print("***** beginning of execution *****")
+        print("***** football player node is running *****")
         penalty_kick.run()
         
     except Exception:
