@@ -8,14 +8,14 @@ General:
 
 In PenaltyKick class:
 
-- Connect a push button to set the flat "agentReadiness" to True and start iterating. The status of this flag is checked in penaltyKick.run()
-- test the new logic where only the node sends motor command
+-STARTED (Benoit): test the new logic where only the node sends motor command and correct bugs
+-DONE: Connect a push button to set the flat "agentReadiness" to True and start iterating. The status of this flag is checked in penaltyKick.run()
 
 ## agent_environment_model.py
 
 In Agent class:
-
-- add menu in Agent.get_reward() to tell the experimenter what his option are + add while loop as long as no valid option is selected by the experimenter
+- add a criteria to end training and automatically save the policy
+-DONE: add menu in Agent.get_reward() to tell the experimenter what his option are + add while loop as long as no valid option is selected by the experimenter
 - clean ...model.py of code involving motor commands
 - implement a method to upload a hard-coded environment and another method to train on this
 
