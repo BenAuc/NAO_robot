@@ -26,6 +26,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn import tree
 import traceback
+import pickle
 
 
 """
@@ -99,7 +100,7 @@ class Agent:
         # Keep track of the reward
         self.reward_total = 0
         self.reward = []
-    
+        self.readiness = False
         # create topic publishers
         # self.jointStiffnessPub = rospy.Publisher("joint_stiffness", JointState, queue_size=1)
         # self.jointPub = rospy.Publisher("joint_angles",JointAnglesWithSpeed,queue_size=10) # Allow joint control
@@ -203,22 +204,31 @@ class Agent:
         if action_id != 2:
             button = 0
         else:
+            print("The key for reward:\n 0:default reward value \n 1:reward for falling \n 2:reward for scoring a goal \n 3:reward for getting blocked by goalkeeper \n 4:reward for missing")
             button = input("Enter the key for the reward: ")
         
         """
         For each button push set the reward
         """
-        if button == 0:
-            reward = self.environment.default_R # default reward value
-        elif button == 1:
-            reward = self.environment.fall_R # reward for falling
-        elif button == 2:
-            reward = self.environment.score_R # reward for scoring a goal
-        elif button == 3:
-            reward = self.environment.block_R # reward for getting the ball blocked by the goalkeeper
-        elif button == 5:
-            reward = self.environment.miss_R  # reward for missing the goal
-
+        while True:
+            if button == 0:
+                reward = self.environment.default_R # default reward value
+                break
+            elif button == 1:
+                reward = self.environment.fall_R # reward for falling
+                break
+            elif button == 2:
+                reward = self.environment.score_R # reward for scoring a goal
+                break
+            elif button == 3:
+                reward = self.environment.block_R # reward for getting the ball blocked by the goalkeeper
+                break
+            elif button == 4:
+                reward = self.environment.miss_R  # reward for missing the goal
+                break
+            else:
+                print("Enter a valid button for the reward again")
+            
         return reward
 
     def set_joint_angles(self, head_angle, joint_name):
@@ -413,7 +423,15 @@ class Policy:
         ax.set_axisbelow(True)
         ax.tick_params(color=(0.42,0.46,0.48),which='both',top=False,left=False,right=False,bottom=False)
         plt.show()
-
+        
+        ## plot to see the training progress(which according to me is the reward progress)
+        plt.figure(figsize=(12,16))
+        plt.plot(self.reward)
+        plt.xlabel("Iterations")
+        plt.ylabel("Rewaard at each iteration")
+        plt.title("Training progress showing the reward")
+        plt.show()
+        
 
     def select_next_action(self, state):
         """
