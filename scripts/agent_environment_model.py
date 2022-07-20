@@ -98,13 +98,14 @@ class Agent:
         self.reward = []
         self.a1 = current_state_coords[0]
         self.a2 = 0
+
+        self.reward_per_episode = []
     
-        # create topic publishers
-        # self.jointStiffnessPub = rospy.Publisher("joint_stiffness", JointState, queue_size=1)
-        # self.jointPub = rospy.Publisher("joint_angles",JointAnglesWithSpeed,queue_size=10) # Allow joint control
-        
-        # # Start main loop
-        # self.main_loop()
+        print('\n\n\n\n**********************\n**********************')
+        print(self.feature1)
+        print(self.feature2)
+        print(current_state_coords)
+        print('**********************\n\n')
 
 
     def main_loop(self):
@@ -221,15 +222,21 @@ class Agent:
 
         # Get the direction of the action
         action_direction = self.environment.action_id_to_direction(action_id) # [hip_movement, knee_movement]
-        self.a1 = current_state_variables + action_direction[0]
-        self.a2 += action_direction[1]
+        self.a1 += action_direction[0]
+        # self.a2 += action_direction[1]
+
+        if self.a1 < 0:
+            self.a1 = 0
+        elif self.a1 >= len(self.HipRollDiscretized):
+            self.a1 = len(self.HipRollDiscretized)-1
 
         print('a1: ', self.a1)
-        print('a2: ', self.a2)
+        # print('a2: ', self.a2)
 
         #Get action for NAO execution
         hip_roll = [self.HipRollDiscretized[self.a1]]
-        knee_pitch = [self.HipRollDiscretized[self.a2]]
+        #knee_pitch = [self.HipRollDiscretized[self.a2]] # NEW VERSION: Handled by football_player_node
+        knee_pitch = 0
 
         ## Measure the new state
         self.hip_joint_position = hip_roll # TODO: get the hip joint position from the robot (using the joint_angles topic)
@@ -313,19 +320,33 @@ class Agent:
         - self.policy: store the policy in the class variable
         """
         
-        path_to_policy = '/home/bio/bioinspired_ws/src/tutorial_5/policy/environment.obj'
-        self.policy= pickle.load(open(path_to_policy, 'rb'))
+        path_to_policy = '/home/bio/bioinspired_ws/src/tutorial_5/policy/saved_policy.obj'
+        with open (path_to_policy, 'rb') as f:
+            self.policy = pickle.load(f)
+
+        path_to_reward = '/home/bio/bioinspired_ws/src/tutorial_5/policy/saved_reward.obj'
+        with open (path_to_reward, 'rb') as f:
+            self.reward_per_episode = pickle.load(f)
 
 
-    def save_policy(self,policy):
+    def save_policy(self):
         """
         Save the policy learned during training
         Inputs:
         - policy to be stored
         """
 
-        path_to_policy = '/home/bio/bioinspired_ws/src/tutorial_5/policy/environment.obj'
-        pickle.dump(policy, open(path_to_policy, 'wb'))
+        reward_mean = sum(self.reward) / len(self.reward)
+        self.reward = []
+        self.reward_per_episode.append(reward_mean)
+
+        path_to_policy = '/home/bio/bioinspired_ws/src/tutorial_5/policy/saved_policy.obj'
+        path_to_reward = '/home/bio/bioinspired_ws/src/tutorial_5/policy/saved_reward.obj'
+        with open(path_to_policy, 'wb') as f:
+            pickle.dump(self.policy, f)
+        with open(path_to_reward, 'wb') as f:
+            pickle.dump(self.reward_per_episode, f)
+        print('\n\n Policy was saved! \n\n')
 
 
 class Policy:
@@ -430,7 +451,8 @@ class Policy:
                 next_state = self.explored_actions[s][a]['next_state']
                 visited = self.explored_actions[s][a]['visited']
                 is_valid = self.explored_actions[s][a]['is_valid']
-                print('State: (ID: {}, 0-based coordinates: [{}, {}]), Action: {}, Next State: {}, Next State Reward: {}, Visited: {}, Valid Transition: {}\n'.format(s, x, y, a_name, next_state, reward, visited, is_valid))
+                # print('State: (ID: {}, 0-based coordinates: [{}, {}]), Action: {}, Next State: {}, Next State Reward: {}, Visited: {}, Valid Transition: {}\n'.format(s, x, y, a_name, next_state, reward, visited, is_valid))
+                print('State: (ID: {}, 0-based coordinates: [{}, {}]), Q: {}\n'.format(s, x, y, self.explored_actions[s][a]['Q']))
 
 
     def plot(self):
@@ -585,11 +607,15 @@ class Policy:
                 
                 # Update the Q-value
                 sum_update = 0
-                for state_id_Q in range(self.nb_states):
+                for possible_action in range(self.nb_actions):
+                    # Loop through all the next states s' and get their P-value
+                    next_state_id = self.explored_actions[state_id][possible_action]['next_state']
+                    next_state_P = self.explored_actions[state_id][possible_action]['P']
                     list_Qs = []
                     for action_id_Q in range(self.nb_actions):
-                        list_Qs.append(self.explored_actions[state_id_Q][action_id_Q]['Q'])
-                    sum_update += self.explored_actions[state_id_Q][action_id]['P'] * int(np.max(list_Qs))
+                        # Loop through all the possible actions at the next state s' to find the maximum
+                        list_Qs.append(self.explored_actions[next_state_id][action_id_Q]['Q'])
+                    sum_update += next_state_P * int(max(list_Qs))
 
                 self.explored_actions[state_id][action_id]['Q'] = R + self.gamma * sum_update
                 
