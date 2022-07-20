@@ -233,8 +233,8 @@ class PenaltyKick:
             agent.train(action_id, previous_state_id)
             
             # saving the policy if button is pressed
-            if self.to_save():
-                self.agent.save_policy()
+            if self.to_save:
+                agent.save_policy()
                 self.to_save = False
 
 
