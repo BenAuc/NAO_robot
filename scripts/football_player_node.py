@@ -102,6 +102,7 @@ class PenaltyKick:
         self.in_resting_position = False # to indicate whether now is in upright position or not
         self.toggle = False # used to prevent the flag from immediately toggling when button is released following a press
         self.agent_exist = False # to make sure only one agent is instatiated
+        self.to_save = False # Falg to save the policy
 
         # create topic subscribers
         rospy.Subscriber("key", String, self.key_cb)
@@ -230,6 +231,11 @@ class PenaltyKick:
         ## If in train mode, train the agent
         if self.train_mode:
             agent.train(action_id, previous_state_id)
+            
+            # saving the policy if button is pressed
+            if self.to_save():
+                self.agent.save_policy()
+                self.to_save = False
 
 
     def kick_ball(self):
@@ -375,6 +381,9 @@ class PenaltyKick:
             else:
                 print("***** agent is set to not ready *****")
                 self.agentIsReady = False
+        
+        if data.button == 2 and data.state == 1:
+            self.to_save = True
             
 
     def aruco_marker_parser(self, data):
