@@ -13,11 +13,11 @@ import copy
 
 class ObjectTracker:
     """
-    Class implementing the tracking of an object in NAO's camera stream + ArUco markers
+    Class implementing the tracking of ArUco markers
     @Inputs:
     -NAO's camera stream
     @Outputs:
-    -coordinates of the object
+    -publish list of (x,y) pixel coordinates in visual field and ids of ArUco markers
     """
 
     def __init__(self):
@@ -56,7 +56,7 @@ class ObjectTracker:
         Inputs:
         -image coming from camera stream
         Outputs:
-        - calls the marker detection method self.marker_detection(cv_image)
+        -calls the marker detection method self.marker_detection(cv_image)
         """
 
         # declare instance of CVBrige for image conversion
@@ -244,7 +244,7 @@ class ObjectTracker:
 if __name__=='__main__':
 
     #initialize the node and set name
-    rospy.init_node('object_tracker',anonymous=True) #initilizes node
+    rospy.init_node('MarkerTrackerNode',anonymous=True) #initilizes node
 
     # instantiate class and start loop function
     try:

@@ -4,23 +4,16 @@
 # file name: agent_environment_model.py
 # author's name: Diego, Priya, Vildana, Benoit Auclair
 # created on: 30-06-2022
-# last edit: 14-07-2022 (Benoit): added joint limits to ROS parameter server
-# function: define the Agent, Policy, and Environment class
+# last edit: 19-07-2022 (Benoit)
+# function: define the Agent, Policy, and Environment classes
 #################################################################
-
-
 
 # Commented out by Diego to be able to develop from home
 
-
 from hmac import new
 import rospy
-from geometry_msgs.msg import Point, PolygonStamped
-from naoqi_bridge_msgs.msg import JointAnglesWithSpeed, HeadTouch
+from naoqi_bridge_msgs.msg import JointAnglesWithSpeed
 from sensor_msgs.msg import Image
-from cv_bridge import CvBridge, CvBridgeError
-import cv2
-import cv2.aruco as aruco
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn import tree
@@ -310,31 +303,14 @@ class Agent:
             
         return reward
 
-    def set_joint_angles(self, head_angle, joint_name):
-        """
-        Handles incoming motor command to set the joint state.
-        Inputs:
-        -joint_name: string containing the joint name
-        -head_angle: float containing the desired state
-        Outputs:
-        -triggers the motion
-        """
 
-        joint_angles_to_set = JointAnglesWithSpeed()
-        joint_angles_to_set.joint_names.append(joint_name) # each joint has a specific name, look into the joint_state topic or google
-        joint_angles_to_set.joint_angles.append(head_angle) # the joint values have to be in the same order as the names!!
-        joint_angles_to_set.relative = False # if true you can increment positions
-        joint_angles_to_set.speed = 0.1 # keep this low if you can
-        self.jointPub.publish(joint_angles_to_set)
-
-
-    def load_policy(self,path):
+    def load_policy(self):
         """
         Upload the policy learned during a prior training
         Inputs:
-        -path: path to the .pickle file containing the policy
+        -None
         Outputs:
-        -self.policy: store the policy in the class variable
+        - self.policy: store the policy in the class variable
         """
         
         path_to_policy = '/home/bio/bioinspired_ws/src/tutorial_5/policy/environment.obj'
@@ -343,9 +319,9 @@ class Agent:
 
     def save_policy(self,policy):
         """
-        Upload the policy learned during a prior training
+        Save the policy learned during training
         Inputs:
-        policy to be stored
+        - policy to be stored
         """
 
         path_to_policy = '/home/bio/bioinspired_ws/src/tutorial_5/policy/environment.obj'
@@ -354,11 +330,11 @@ class Agent:
 
 class Policy:
     """
-    Class implementing ...
+    Class implementing the policy the agent learns during reinforcement learning
     @Inputs:
-    -...
+    -environment: the environment the agent navigates
     @Outputs:
-    -...
+    -policy: the policy that's been trained
     """
 
     def __init__(self, environment):
@@ -386,7 +362,8 @@ class Policy:
 
     def new_state_action_pair(self):
         """
-        Needs to be defined here and not as a class property, because then we would store a handle to the same dictionary instance. This way, we can obtain a new instance of the dictionary for each state-action pair.
+        Needs to be defined here and not as a class property, because then we would store a handle to the same dictionary instance. 
+        This way, we can obtain a new instance of the dictionary for each state-action pair.
         """
 
         # define state action pairs as dictionaries
